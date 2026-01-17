@@ -4,6 +4,12 @@ from typing import Dict, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+class HealthCheckResponse(BaseModel):
+    status: str = Field(default="ok", description="System status")
+    service: str = Field(default="ree", description="Service name")
+    env: str = Field(..., description="Runtime environment")
+
+
 class RealEstateType(str, Enum):
     enebolig = "enebolig"
     tomannsbolig = "tomannsbolig"

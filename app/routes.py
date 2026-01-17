@@ -1,10 +1,10 @@
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, status, HTTPException
 
 from app.config import settings
 from app.ml.registry import ModelNotReadyError, ModelRegistry
-from app.schemas import EstimateResponse, ValidationErrorResponse
+from app.schemas import EstimateResponse, HealthCheckResponse, ValidationErrorResponse
 from app.services.estimate_service import estimate_batch
 from app.storage.s3 import S3Storage
 from app.ml.base import Predictor
@@ -28,9 +28,16 @@ def get_predictor() -> Predictor:
         )
 
 
-@router.get("/healthz", tags=["health"])
-def healthz() -> dict:
-    return {"status": "ok", "service": "ree", "env": settings.env}
+@router.get(
+    "/health",
+    tags=["healthcheck"],
+    summary="Perform a Health Check",
+    response_description="Return HTTP Status Code 200 (OK)",
+    status_code=status.HTTP_200_OK,
+    response_model=HealthCheckResponse,
+)
+async def get_health() -> HealthCheckResponse:
+    return HealthCheckResponse(status="ok", env=settings.env)
 
 
 @router.post(

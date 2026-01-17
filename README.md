@@ -55,7 +55,7 @@ honcho start
 ## Open:
 - [Swagger](http://localhost:8080/docs)
 - [ReDoc](http://localhost:8080/redoc)
-- [Health](http://localhost:8080/healthz)
+- [Health](http://localhost:8080/health)
 
 ## 📝 Notes
 
