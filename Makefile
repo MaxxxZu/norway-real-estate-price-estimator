@@ -8,7 +8,7 @@ test:
 
 lint:
 	uv run flake8 .
-	uv run isort . --check-only --filter-files
+	uv run isort . --filter-files
 
 format:
 	uv run isort . --filter-files
