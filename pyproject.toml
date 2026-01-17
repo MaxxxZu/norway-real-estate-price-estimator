@@ -24,6 +24,8 @@ dev = [
     "pytest>=9.0.2",
     "flake8>=7.3.0",
     "isort>=7.0.0",
+    "honcho>=2.0.0",
+    "watchfiles>=1.1.1",
 ]
 
 [tool.flake8]
