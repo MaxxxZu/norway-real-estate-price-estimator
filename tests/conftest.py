@@ -1,5 +1,18 @@
+import os
 import pytest
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
+
+load_dotenv('.env.test', override=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_env():
+    required_vars = ['API_BASE_URL', 'API_KEY']
+    missing = [var for var in required_vars if not os.getenv(var)]
+    if missing:
+        raise RuntimeError(f"Missing required env vars for tests: {missing}")
+    yield
 
 
 @pytest.fixture(scope="session")
