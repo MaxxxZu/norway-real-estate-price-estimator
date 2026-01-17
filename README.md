@@ -11,8 +11,8 @@ End-to-end AI system for estimating **current market prices** of residential rea
 - Kubernetes-ready deployment (Helm)
 
 ## Tech stack
-- Python 3.11
-- FastAPI
+- FastAPI, Uvicorn
+- `uv` (dependency manager) with `pyproject.toml` + `uv.lock`
 - Celery + RabbitMQ
 - MinIO (S3-compatible)
 - Docker & Docker Compose
