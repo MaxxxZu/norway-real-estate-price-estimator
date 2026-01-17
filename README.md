@@ -102,3 +102,58 @@ In the development environment:
   "dry_run": true
 }
 ```
+
+## Sklearn model Evaluation Metrics
+
+### Overall Performance
+
+- **MAE:** 963,341
+- **RMSE:** 1,610,995
+
+> Average absolute prediction error is ~963k.
+> Higher RMSE indicates the presence of large outliers.
+
+---
+
+### MAE by Real Estate Type
+
+| Type | MAE |
+|------|----:|
+| leilighet | 799,366 |
+| hytte | 928,496 |
+| rekkehus | 970,871 |
+| tomannsbolig | 1,115,249 |
+| enebolig | 1,438,171 |
+
+---
+
+### MAE by Municipality (Top)
+
+| Municipality | MAE |
+|-------------:|----:|
+| 3205 | 448,371 |
+| 3107 | 751,234 |
+| 4204 | 821,650 |
+| 1508 | 918,516 |
+| 5001 | 937,269 |
+| 4601 | 984,198 |
+| 3301 | 966,644 |
+| 3201 | 1,065,213 |
+| 1108 | 1,306,385 |
+| 301 | 1,432,622 |
+
+---
+
+### Dataset Size
+
+- **Train:** 1,783 samples
+- **Test:** 446 samples
+
+---
+
+### Notes
+
+- Best performance on apartments (*leilighet*)
+- Higher errors for detached houses (*enebolig*)
+- Error varies significantly across municipalities
+- Dataset size is relatively small, contributing to higher variance

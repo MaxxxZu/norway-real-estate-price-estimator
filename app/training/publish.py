@@ -1,0 +1,59 @@
+from datetime import datetime, timezone
+from io import BytesIO
+from typing import Any
+
+import joblib
+
+from app.config import settings
+from app.storage.s3 import S3Storage
+
+
+def upload_model_artifacts(
+    storage: S3Storage,
+    model_version: str,
+    pipeline: Any,
+    metrics: dict[str, Any],
+    feature_schema: dict[str, Any],
+    training_manifest: dict[str, Any],
+) -> dict[str, str]:
+    prefix = f"models/{model_version}"
+    model_key = f"{prefix}/model.pkl"
+    metrics_key = f"{prefix}/metrics.json"
+    schema_key = f"{prefix}/feature_schema.json"
+    manifest_key = f"{prefix}/training_manifest.json"
+
+    bio = BytesIO()
+    joblib.dump(pipeline, bio)
+    storage.put_bytes(
+        bucket=settings.s3_bucket_models,
+        key=model_key,
+        data=bio.getvalue(),
+        content_type="application/octet-stream",
+    )
+
+    storage.put_json(bucket=settings.s3_bucket_models, key=metrics_key, obj=metrics)
+    storage.put_json(bucket=settings.s3_bucket_models, key=schema_key, obj=feature_schema)
+    storage.put_json(bucket=settings.s3_bucket_models, key=manifest_key, obj=training_manifest)
+
+    return {
+        "model_key": model_key,
+        "metrics_key": metrics_key,
+        "schema_key": schema_key,
+        "manifest_key": manifest_key,
+    }
+
+
+def update_latest_json(
+    storage: S3Storage,
+    model_version: str,
+    artifact_key: str,
+    snapshot_prefix: str,
+) -> None:
+    latest = {
+        "model_version": model_version,
+        "type": "sklearn",
+        "artifact_key": artifact_key,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "snapshot_prefix": snapshot_prefix,
+    }
+    storage.put_json(bucket=settings.s3_bucket_models, key="latest.json", obj=latest)
