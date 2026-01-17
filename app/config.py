@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     s3_bucket_models: str = Field(default="ree-models", alias="S3_BUCKET_MODELS")
     s3_bucket_snapshots: str = Field(default="ree-snapshots", alias="S3_BUCKET_SNAPSHOTS")
 
+    model_registry_refresh_seconds: int = Field(default=60, alias="MODEL_REGISTRY_REFRESH_SECONDS")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="REE_",

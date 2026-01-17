@@ -29,7 +29,6 @@ End-to-end AI system for estimating **current market prices** of residential rea
 ```bash
 cp .env.example .env
 uv lock
-make compose-up
 ```
 ### 2) Start infrastructure (RabbitMQ + MinIO)
 ```bash
@@ -43,7 +42,12 @@ make compose-up
 | **MinIO Console** | http://localhost:9001 | See `.env` |
 | **MinIO S3 Endpoint** | http://localhost:9000 | - |
 
-### 3) Start application (FastAPI + Celery worker)
+### 3) Create stub model
+```bash
+uv run python -m scripts.bootstrap_model_registry
+```
+
+### 4) Start application (FastAPI + Celery worker)
 ```bash
 honcho start
 ```
