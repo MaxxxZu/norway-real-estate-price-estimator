@@ -1,9 +1,10 @@
 [project]
 name = "norway-real-estate-price-estimator"
 version = "0.1.0"
-description = "Add your description here"
+description = "Production-grade AI system for current real estate price estimation in Norway"
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [{ name = "Maksym Zyultsle" }]
 dependencies = [
     "boto3>=1.42.30",
     "celery>=5.6.2",
@@ -19,6 +20,44 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pytest-cov>=7.0.0",
     "pytest>=9.0.2",
-    "ruff>=0.14.13",
+    "flake8>=7.3.0",
+    "isort>=7.0.0",
+]
+
+[tool.flake8]
+max-line-length = 99
+extend-ignore = ["E203", "W503"]
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "dist",
+    ".mypy_cache",
+    ".pytest_cache",
+    "build",
+]
+
+[tool.isort]
+profile = "black"
+line_length = 99
+combine_as_imports = true
+force_grid_wrap = 0
+include_trailing_comma = true
+multi_line_output = 3
+ensure_newline_before_comments = true
+known_third_party = ["fastapi", "uvicorn", "pydantic", "pydantic_settings"]
+skip = [".venv", "dist", ".mypy_cache", ".pytest_cache", "build", "__pycache__"]
+skip_glob = ["**/__pycache__/*", "**/*.pyc"]
+
+[tool.pytest.ini_options]
+addopts = "--maxfail=1 --disable-warnings -q"
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = [
+  "ignore::DeprecationWarning:transformers",
+  "ignore::UserWarning:transformers",
+  "ignore::FutureWarning:transformers",
+  "ignore::ImportWarning:torch"
 ]
