@@ -17,3 +17,7 @@ build/
 # IDE
 .vscode/
 .idea/
+
+# Celery stuff
+*.db
+celerybeat.pid

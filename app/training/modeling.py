@@ -93,11 +93,10 @@ def train_and_evaluate(rows: list[dict[str, Any]]) -> TrainResult:
     test_df = X_test.copy()
     test_df["y_true"] = y_test.values
     test_df["y_pred"] = y_pred
-    by_type = (
-        test_df.groupby("realestate_type")
-        .apply(lambda g: float(mean_absolute_error(g["y_true"], g["y_pred"])))
-        .to_dict()
-    )
+
+    by_type = {}
+    for rt, g in test_df.groupby("realestate_type", sort=False):
+        by_type[str(rt)] = float(mean_absolute_error(g["y_true"], g["y_pred"]))
 
     # MAE by top municipalities by volume in test set
     top_munis = (

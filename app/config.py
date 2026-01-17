@@ -24,6 +24,7 @@ class Settings(BaseSettings):
         default="rpc://",
         alias="CELERY_RESULT_BACKEND",
     )
+    celery_timezone: str = Field(default="Europe/Ljubljana", alias="CELERY_TIMEZONE")
 
     api_base_url: str = Field(..., alias="API_BASE_URL")
     api_key: str = Field(..., alias="API_KEY")

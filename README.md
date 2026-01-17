@@ -64,6 +64,16 @@ Fetch data for a date range, build dataset, and upload snapshots to MinIO:
 uv run python -m scripts.train --start-date 2026-01-01 --end-date 2026-01-31 --dry-run
 ```
 
+## Retraining (scheduled)
+Local dev runs Celery worker + Celery beat via Procfile.
+
+- Monthly retrain runs on the 1st day at 03:05 (Europe/Ljubljana) and trains the previous month, then publishes to MinIO and updates `ree-models/latest.json`.
+
+Manual retrain:
+```bash
+uv run celery -A app.celery_app.celery_app call app.tasks.retrain.retrain_range --args='["2026-01-01","2026-01-31", true]'
+```
+
 ## 📝 Notes
 
 ### Development Architecture
