@@ -19,7 +19,7 @@ def test_batch_validation_errors_are_per_property(client):
             "lon": 10.0,
             "built_year": 2000,
             "total_area": 50.0,
-            "bra": 60.0,  # invalid
+            "bra": 60.0,
         },
     }
 

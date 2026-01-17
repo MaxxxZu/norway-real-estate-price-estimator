@@ -57,6 +57,13 @@ honcho start
 - [ReDoc](http://localhost:8080/redoc)
 - [Health](http://localhost:8080/health)
 
+## Training (dry-run snapshots)
+Fetch data for a date range, build dataset, and upload snapshots to MinIO:
+
+```bash
+uv run python -m scripts.train --start-date 2026-01-01 --end-date 2026-01-31 --dry-run
+```
+
 ## 📝 Notes
 
 ### Development Architecture
@@ -68,3 +75,30 @@ In the development environment:
 - **Local Development:** MinIO serves as an S3-compatible storage solution
 - **Production:** Same codebase connects to AWS S3 or any S3-compatible provider
 - **Configuration:** Switch between environments using environment variables only—no code changes required
+
+## 🔄 Pipeline results
+
+**Period:** 01.01.2026 - 31.01.2026
+
+📄 `manifest.json`
+```json
+{
+  "period": {
+    "start_date": "2026-01-01",
+    "end_date": "2026-01-31"
+  },
+  "counts": {
+    "turnovers_raw": 6559,
+    "turnovers_normalized": 6179,
+    "cadastral_unit_ids": 6179,
+    "properties_matched": 2900,
+    "rows_raw": 2459,
+    "rows_trainable": 2219
+  },
+  "dropped_reasons": {
+    "invalid:total_area": 191,
+    "invalid:total_area_lt_bra": 49
+  },
+  "dry_run": true
+}
+```

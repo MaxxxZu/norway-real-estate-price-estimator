@@ -1,4 +1,4 @@
-.PHONY: run test lint format cov compose-up compose-down compose-logs compose-rebuild
+.PHONY: run test lint format cov compose-up compose-down compose-logs compose-rebuild train-dry-run
 
 run:
 	uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -27,3 +27,7 @@ compose-logs:
 
 compose-rebuild:
 	docker compose build --no-cache
+
+train-dry-run:
+	uv run python -m scripts.train --start-date $(START_DATE) --end-date $(END_DATE) --dry-run
+
