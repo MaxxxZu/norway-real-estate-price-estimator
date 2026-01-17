@@ -3,7 +3,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.ml.base import Predictor
-from app.schemas import EstimationFeatures, EstimateResponse, EstimateResult
+from app.schemas import EstimateResponse, EstimateResult, EstimationFeatures
 
 
 def _format_validation_error(err: ValidationError) -> list[str]:
