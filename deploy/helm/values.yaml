@@ -1,0 +1,42 @@
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ree
+  tag: dev
+  pullPolicy: IfNotPresent
+
+api:
+  port: 8000
+
+service:
+  type: ClusterIP
+  port: 80
+
+secrets:
+  name: ree-secrets
+
+minio:
+  enabled: true
+  image: minio/minio:latest
+  storageSize: 10Gi
+  service:
+    port: 9000
+    consolePort: 9001
+
+s3:
+  endpoint: http://ree-minio:9000
+  secure: false
+  region: eu-north-1
+  bucketModels: ree-models
+  bucketSnapshots: ree-snapshots
+
+training:
+  enabled: false
+  suspend: true
+  schedule: "0 2 1 * *"
+  timezone: "Europe/Oslo"
+  backoffLimit: 1
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2

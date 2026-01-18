@@ -66,3 +66,15 @@ def estimate(
         )
 
     return results
+
+
+@router.get(
+    "/ready",
+    tags=["readycheck"],
+    summary="Perform a Ready Check",
+    response_description="Return HTTP Status Code 200 (OK)",
+    status_code=status.HTTP_200_OK,
+)
+def get_ready() -> dict[str, str]:
+    _ = get_predictor()
+    return {"status": "ready"}

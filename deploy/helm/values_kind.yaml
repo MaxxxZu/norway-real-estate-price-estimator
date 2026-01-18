@@ -1,0 +1,32 @@
+env: kind
+logLevel: INFO
+
+image:
+  repository: ree
+  tag: dev
+  pullPolicy: IfNotPresent
+
+secrets:
+  name: ree-secrets
+
+api:
+  replicaCount: 1
+
+minio:
+  enabled: true
+
+s3:
+  endpoint: http://ree-minio:9000
+  secure: false
+  region: eu-north-1
+  bucketModels: ree-models
+  bucketSnapshots: ree-snapshots
+
+training:
+  enabled: true
+  suspend: true
+  schedule: "0 2 1 * *"
+  timezone: "Europe/Oslo"
+  backoffLimit: 1
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2

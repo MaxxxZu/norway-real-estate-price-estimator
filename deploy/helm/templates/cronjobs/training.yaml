@@ -1,0 +1,39 @@
+{{- if .Values.training.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "ree.fullname" . }}-training
+  labels:
+    {{- include "ree.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.training.schedule | quote }}
+  {{- if .Values.training.timezone }}
+  timeZone: {{ .Values.training.timezone | quote }}
+  {{- end }}
+  suspend: {{ .Values.training.suspend }}
+  successfulJobsHistoryLimit: {{ .Values.training.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.training.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.training.backoffLimit }}
+      template:
+        metadata:
+          labels:
+            {{- include "ree.selectorLabels" . | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: train
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              envFrom:
+                - secretRef:
+                    name: {{ .Values.secrets.name }}
+              command: ["/bin/sh", "-lc"]
+              args:
+                - |
+                  set -e
+                  echo "Starting monthly retrain (previous month)..."
+                  uv run python -m scripts.train_previous_month
+{{- end }}
+

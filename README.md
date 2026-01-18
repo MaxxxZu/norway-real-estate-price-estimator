@@ -74,6 +74,62 @@ Manual retrain:
 uv run celery -A app.celery_app.celery_app call app.tasks.retrain.retrain_range --args='["2026-01-01","2026-01-31", true]'
 ```
 
+# Deploy to kind
+## Prerequisites
+
+- `kubectl`
+- `kind`
+- `helm`
+- `docker`
+- `k9s` (optional)
+---
+## Create cluster
+```bash
+kind create cluster --name ree
+kubectl cluster-info --context kind-ree
+```
+---
+## Build and load image to kind
+```bash
+TAG=dev-$(git rev-parse --short HEAD)
+docker build -t ree:$TAG -f deploy/Dockerfile .
+kind load docker-image ree:$TAG --name ree
+```
+---
+## Create namespace + secret from .env.kind
+```bash
+kubectl create namespace ree 2>/dev/null || true
+kubectl -n ree delete secret ree-secrets --ignore-not-found
+kubectl -n ree create secret generic ree-secrets --from-env-file=.env.kind
+```
+---
+## Install with Helm (kind values)
+```bash
+helm upgrade --install ree deploy/helm -n ree -f deploy/helm/values_kind.yaml
+```
+---
+## Port-forward
+```bash
+kubectl -n ree port-forward svc/ree-api 8000:80
+kubectl -n ree port-forward svc/ree-minio 9001:9001
+```
+---
+## Run training once (manual, first time)
+```bash
+kubectl -n ree create job --from=cronjob/ree-training ree-training-manual-1
+```
+---
+## Enable CronJob in kind (optional)
+Set `training.suspend: false` in `values.yaml` and run:
+```bash
+helm upgrade --install ree deploy/helm -n ree -f deploy/helm/values_kind.yaml
+```
+---
+### Note:
+- Use you k8s config, example: `KUBECONFIG=~/.kube/kind-config kubectl`
+
+
+
 ## 📝 Notes
 
 ### Development Architecture

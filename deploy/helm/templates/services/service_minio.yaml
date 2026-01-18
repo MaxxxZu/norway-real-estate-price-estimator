@@ -1,0 +1,17 @@
+{{- if .Values.minio.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ree.fullname" . }}-minio
+spec:
+  selector:
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: s3
+      port: {{ .Values.minio.service.port }}
+      targetPort: 9000
+    - name: console
+      port: {{ .Values.minio.service.consolePort }}
+      targetPort: 9001
+{{- end }}
