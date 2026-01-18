@@ -12,8 +12,13 @@ from app.training.fetch import (
     fetch_turnovers,
     normalize_turnovers,
 )
+from app.training.gating import evaluate_publish_gate
 from app.training.modeling import train_and_evaluate
-from app.training.publish import update_latest_json, upload_model_artifacts
+from app.training.publish import (
+    update_latest_json,
+    upload_model_artifacts,
+    try_load_previous_metrics
+)
 from app.training.snapshots import snapshot_paths, upload_snapshots
 from app.training.versioning import make_model_version
 
@@ -71,6 +76,13 @@ def _publish_model(
     model_version = make_model_version()
     snapshot_prefix = snapshot_paths(start_date.isoformat(), end_date.isoformat()).prefix
 
+    prev_metrics = try_load_previous_metrics(storage)
+    gate = evaluate_publish_gate(
+        rows_trainable=int(manifest["counts"]["rows_trainable"]),
+        new_metrics=train_res.metrics,
+        prev_metrics=prev_metrics,
+    )
+
     training_manifest = {
         "model_version": model_version,
         "snapshot_prefix": snapshot_prefix,
@@ -78,6 +90,11 @@ def _publish_model(
         "counts": manifest["counts"],
         "dropped_reasons": manifest["dropped_reasons"],
         "metrics": train_res.metrics,
+        "gating": {
+            "passed": gate.passed,
+            "reasons": gate.reasons,
+            "details": gate.details,
+        },
     }
 
     keys = upload_model_artifacts(
@@ -89,17 +106,26 @@ def _publish_model(
         training_manifest=training_manifest,
     )
 
-    update_latest_json(
-        storage=storage,
-        model_version=model_version,
-        artifact_key=keys["model_key"],
-        snapshot_prefix=snapshot_prefix,
-    )
+    published = False
+    latest_updated = False
+    if gate.passed:
+        update_latest_json(
+            storage=storage,
+            model_version=model_version,
+            artifact_key=keys["model_key"],
+            snapshot_prefix=snapshot_prefix,
+        )
+        published = True
+        latest_updated = True
 
     return {
+        "attempted": True,
+        "published": published,
+        "latest_updated": latest_updated,
         "model_version": model_version,
         "model_key": keys["model_key"],
-        "latest_key": "latest.json",
+        "gating_passed": gate.passed,
+        "gating_reasons": gate.reasons,
     }
 
 
