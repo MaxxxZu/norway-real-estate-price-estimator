@@ -5,7 +5,30 @@ from typing import Any
 import joblib
 
 from app.config import settings
-from app.storage.s3 import S3Storage
+from app.storage.s3 import S3Storage, S3StorageError
+
+
+def try_load_previous_metrics(storage: S3Storage) -> dict[str, Any] | None:
+    """
+    Load metrics.json of the currently published model (pointed by latest.json).
+    If latest.json is missing or malformed, return None.
+    """
+    try:
+        latest = storage.get_json(bucket=settings.s3_bucket_models, key="latest.json")
+    except S3StorageError:
+        return None
+
+    try:
+        model_type = str(latest.get("type", "")).strip()
+        model_version = str(latest.get("model_version", "")).strip()
+        if not model_type or not model_version:
+            return None
+
+        metrics_key = f"models/{model_version}/metrics.json"
+        metrics = storage.get_json(bucket=settings.s3_bucket_models, key=metrics_key)
+        return metrics if isinstance(metrics, dict) else None
+    except Exception:
+        return None
 
 
 def upload_model_artifacts(

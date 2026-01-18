@@ -40,6 +40,15 @@ class Settings(BaseSettings):
 
     model_registry_refresh_seconds: int = Field(default=60, alias="MODEL_REGISTRY_REFRESH_SECONDS")
 
+    # Training publish gating
+    train_min_rows: int = Field(default=500, alias="TRAIN_MIN_ROWS")
+    gate_overall_mae_max_degrade_pct: float = Field(
+        default=0.05, alias="GATE_OVERALL_MAE_MAX_DEGRADE_PCT"
+    )
+    gate_enebolig_mae_max_degrade_pct: float = Field(
+        default=0.07, alias="GATE_ENEBOLIG_MAE_MAX_DEGRADE_PCT"
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="REE_",
