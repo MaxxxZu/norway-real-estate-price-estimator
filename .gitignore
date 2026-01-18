@@ -6,6 +6,7 @@ __pycache__/
 .env
 .DS_Store
 .env.kind
+.env.gke
 
 # uv
 uv.lock.backup
