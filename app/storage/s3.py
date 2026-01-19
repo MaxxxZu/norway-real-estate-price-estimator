@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import settings
@@ -18,6 +19,12 @@ class S3ObjectRef:
     key: str
 
 
+cfg = Config(
+    signature_version="s3v4",
+    s3={"addressing_style": "path"},
+)
+
+
 class S3Storage:
     def __init__(self):
         self._client = boto3.client(
@@ -27,6 +34,7 @@ class S3Storage:
             aws_secret_access_key=settings.s3_secret_key,
             region_name=settings.s3_region,
             use_ssl=settings.s3_secure,
+            config=cfg,
         )
 
     def get_bytes(self, bucket: str, key: str) -> bytes:
