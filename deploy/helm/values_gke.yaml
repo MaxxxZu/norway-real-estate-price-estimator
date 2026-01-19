@@ -1,0 +1,25 @@
+env: gke
+logLevel: INFO
+
+image:
+  repository: ghcr.io/maxxxzu/norway-real-estate-price-estimator
+  tag: v0.3.2
+  pullPolicy: IfNotPresent
+
+secrets:
+  name: ree-secrets
+
+api:
+  replicaCount: 1
+
+minio:
+  enabled: false
+
+training:
+  enabled: true
+  suspend: true
+  schedule: "0 2 1 * *"
+  timezone: "Europe/Oslo"
+  backoffLimit: 1
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
