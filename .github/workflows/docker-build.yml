@@ -9,9 +9,6 @@ permissions:
   contents: read
   packages: write
 
-env:
-  IMAGE_OWNER: ${{ github.repository_owner | lower }}
-
 concurrency:
   group: "release-gke"
   cancel-in-progress: false
@@ -23,6 +20,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set lowercase owner
+        run: |
+          echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+        shell: bash
 
       - name: Extract tag
         id: meta
