@@ -8,7 +8,7 @@ from app.routes import router
 def create_app() -> FastAPI:
     api = FastAPI(
         title="Norway Real Estate Price Estimator",
-        version="0.1.0",
+        version="1.0.0",
     )
 
     api.add_middleware(

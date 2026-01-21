@@ -1,6 +1,6 @@
 [project]
 name = "norway-real-estate-price-estimator"
-version = "0.1.0"
+version = "1.0.0"
 description = "Production-grade AI system for current real estate price estimation in Norway"
 readme = "README.md"
 requires-python = ">=3.11"

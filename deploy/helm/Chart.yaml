@@ -2,5 +2,5 @@ apiVersion: v2
 name: ree
 description: Norway real estate price estimator (API + retraining CronJob)
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 1.0.0
+appVersion: "1.0.0"
