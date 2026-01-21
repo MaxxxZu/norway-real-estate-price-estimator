@@ -57,16 +57,12 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY_JSON }}
 
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
       - name: Get GKE credentials
-        run: |
-          gcloud container clusters get-credentials "${{ secrets.GKE_CLUSTER }}" \
-            --location "${{ secrets.GKE_LOCATION }}" \
-            --project "${{ secrets.GCP_PROJECT_ID }}"
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ secrets.GKE_CLUSTER }}
+          location: ${{ secrets.GKE_LOCATION }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Ensure namespace
         run: |
