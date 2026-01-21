@@ -9,6 +9,9 @@ permissions:
   contents: read
   packages: write
 
+env:
+  IMAGE_OWNER: ${{ github.repository_owner | lower }}
+
 concurrency:
   group: "release-gke"
   cancel-in-progress: false
@@ -44,8 +47,8 @@ jobs:
           file: deploy/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/norway-real-estate-price-estimator:${{ steps.meta.outputs.tag }}
-            ghcr.io/${{ github.repository_owner }}/norway-real-estate-price-estimator:latest
+            ghcr.io/${{ env.IMAGE_OWNER }}/norway-real-estate-price-estimator:${{ steps.meta.outputs.tag }}
+            ghcr.io/${{ env.IMAGE_OWNER }}/norway-real-estate-price-estimator:latest
 
       - name: Auth to GCP
         uses: google-github-actions/auth@v2
@@ -87,7 +90,7 @@ jobs:
           helm upgrade --install ree deploy/helm \
             -n ree \
             -f deploy/helm/values_gke.yaml \
-            --set image.repository=ghcr.io/${{ github.repository_owner }}/norway-real-estate-price-estimator \
+            --set image.repository=ghcr.io/${{ env.IMAGE_OWNER }}/norway-real-estate-price-estimator \
             --set image.tag=${{ steps.meta.outputs.tag }}
 
       - name: Rollout status
