@@ -27,7 +27,7 @@ spec:
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               resources:
-                {{- toYaml .Values.resources.training | nindent 12 }}
+                {{- toYaml .Values.resources.training | nindent 16 }}
               envFrom:
                 - secretRef:
                     name: {{ .Values.secrets.name }}
@@ -38,4 +38,3 @@ spec:
                   echo "Starting monthly retrain (previous month)..."
                   uv run python -m scripts.train_previous_month
 {{- end }}
-
