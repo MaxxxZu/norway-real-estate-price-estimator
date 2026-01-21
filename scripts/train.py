@@ -2,6 +2,7 @@ import argparse
 from datetime import date
 
 from app.training.pipeline import run_training_pipeline
+from app.training.window import window_start
 
 
 DATE_FORMAT = "%Y-%m-%d"
@@ -16,16 +17,22 @@ def _build_parser() -> argparse.ArgumentParser:
         description="Training pipeline: fetch -> dataset -> train -> publish"
     )
     parser.add_argument(
-        "--start-date",
-        required=True,
-        type=_parse_date,
-        help=(f"Start date in format {DATE_FORMAT} (example: 2022-04-01). ")
-    )
-    parser.add_argument(
         "--end-date",
         required=True,
         type=_parse_date,
         help=(f"End date in format {DATE_FORMAT} (example: 2022-04-01). ")
+    )
+    parser.add_argument(
+        "--start-date",
+        required=False,
+        type=_parse_date,
+        help=(f"Optional start date in format {DATE_FORMAT} (example: 2022-04-01). ")
+    )
+    parser.add_argument(
+        "--window-months",
+        type=int,
+        default=12,
+        help="Trailing window size in months (used when --start-date is omitted). Default: 12.",
     )
     parser.add_argument(
         "--dry-run",
@@ -59,8 +66,8 @@ def main() -> None:
     if args.publish and not args.train:
         raise SystemExit("--publish requires --train.")
 
-    start_date = args.start_date
     end_date = args.end_date
+    start_date: date = args.start_date or window_start(end_date, args.window_months)
     if end_date < start_date:
         raise SystemExit("end-date must be >= start-date")
 
