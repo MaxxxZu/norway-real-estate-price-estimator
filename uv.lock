@@ -449,7 +449,7 @@ wheels = [
 
 [[package]]
 name = "norway-real-estate-price-estimator"
-version = "0.1.0"
+version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "boto3" },
