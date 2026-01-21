@@ -26,6 +26,8 @@ spec:
             - name: train
               image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
+              resources:
+                {{- toYaml .Values.resources.training | nindent 12 }}
               envFrom:
                 - secretRef:
                     name: {{ .Values.secrets.name }}

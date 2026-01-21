@@ -3,8 +3,8 @@ nameOverride: ""
 fullnameOverride: ""
 
 image:
-  repository: ree
-  tag: dev
+  repository: ghcr.io/<github_user>/norway-real-estate-price-estimator
+  tag: latest
   pullPolicy: IfNotPresent
 
 api:
@@ -31,6 +31,23 @@ s3:
   region: eu-north-1
   bucketModels: ree-models
   bucketSnapshots: ree-snapshots
+
+resources:
+  api:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  training:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
 
 training:
   enabled: false
