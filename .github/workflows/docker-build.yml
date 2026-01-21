@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -51,12 +51,6 @@ jobs:
           tags: |
             ghcr.io/${{ env.IMAGE_OWNER }}/norway-real-estate-price-estimator:${{ steps.meta.outputs.tag }}
             ghcr.io/${{ env.IMAGE_OWNER }}/norway-real-estate-price-estimator:latest
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - uses: actions/checkout@v4
 
       - name: Auth to GCP
         uses: google-github-actions/auth@v2
