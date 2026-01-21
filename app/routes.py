@@ -78,3 +78,14 @@ def estimate(
 def get_ready() -> dict[str, str]:
     _ = get_predictor()
     return {"status": "ready"}
+
+
+@router.get("/metrics", tags=["monitoring"], summary="Get last model metrics")
+def get_rmetrics() -> Any:
+    try:
+        return _registry.get_active_metrics()
+    except ModelNotReadyError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "model_not_ready", "reason": str(e)},
+        )

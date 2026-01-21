@@ -83,9 +83,16 @@ def _publish_model(
         prev_metrics=prev_metrics,
     )
 
+    training_window_months = 12
+
     training_manifest = {
         "model_version": model_version,
         "snapshot_prefix": snapshot_prefix,
+        "data_window": {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "window_months": training_window_months,
+        },
         "period": manifest["period"],
         "counts": manifest["counts"],
         "dropped_reasons": manifest["dropped_reasons"],

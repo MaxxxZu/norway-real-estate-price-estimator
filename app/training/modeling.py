@@ -5,11 +5,12 @@ import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.ensemble import HistGradientBoostingRegressor
+
+from app.training.metrics import compute_metrics
 
 
 CATEGORICAL_COLS = ["realestate_type"]
@@ -32,6 +33,16 @@ class TrainResult:
     pipeline: Any
     metrics: dict[str, Any]
     feature_schema: dict[str, Any]
+
+
+def _metrics_by_group(df: pd.DataFrame, group_col: str) -> dict[str, dict[str, float]]:
+    out: dict[str, dict[str, float]] = {}
+    for key, g in df.groupby(group_col, dropna=False):
+        out[str(key)] = compute_metrics(
+            g["y_true"].to_numpy(dtype=float),
+            g["y_pred"].to_numpy(dtype=float),
+        )
+    return out
 
 
 def _add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -85,32 +96,20 @@ def train_and_evaluate(rows: list[dict[str, Any]]) -> TrainResult:
 
     y_pred = pipeline.predict(X_test)
 
-    mae = float(mean_absolute_error(y_test, y_pred))
-    mse = float(mean_squared_error(y_test, y_pred))
-    rmse = float(np.sqrt(mse))
+    y_true = y_test.to_numpy(dtype=float)
+    y_pred = y_pred.astype(float)
 
-    # MAE by realestate_type on test set
-    test_df = X_test.copy()
-    test_df["y_true"] = y_test.values
-    test_df["y_pred"] = y_pred
+    eval_df = X_test.copy()
+    eval_df["y_true"] = y_true
+    eval_df["y_pred"] = y_pred
+    eval_df["realestate_type"] = X_test["realestate_type"].astype(str).values
 
-    by_type = {}
-    for rt, g in test_df.groupby("realestate_type", sort=False):
-        by_type[str(rt)] = float(mean_absolute_error(g["y_true"], g["y_pred"]))
-
-    # MAE by top municipalities by volume in test set
-    top_munis = (
-        test_df["municipality_number"].value_counts().head(10).index.tolist()
-    )
-    by_muni = {}
-    for m in top_munis:
-        g = test_df[test_df["municipality_number"] == m]
-        by_muni[str(int(m))] = float(mean_absolute_error(g["y_true"], g["y_pred"]))
+    overall = compute_metrics(eval_df["y_true"].to_numpy(), eval_df["y_pred"].to_numpy())
+    by_type = _metrics_by_group(eval_df, "realestate_type")
 
     metrics = {
-        "overall": {"mae": mae, "rmse": rmse},
-        "by_realestate_type_mae": by_type,
-        "by_top_municipality_mae": by_muni,
+        "overall": overall,
+        "by_realestate_type": by_type,
         "n_train": int(len(X_train)),
         "n_test": int(len(X_test)),
     }
