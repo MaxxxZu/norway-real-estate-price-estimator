@@ -1,37 +1,172 @@
 # Norway Real Estate Price Estimator
 
+Production-like AI / MLOps project for estimating real estate prices in Norway based on historical sales data.
 End-to-end AI system for estimating **current market prices** of residential real estate in Norway.
+The project demonstrates the complete path: data → ML pipeline → model registry → API → Kubernetes → CI/CD.
 
-## Key features
-- Current price estimation via FastAPI
-- Batch `/estimate` API
-- Monthly model retraining on real transaction data
-- Async training pipeline (Celery + RabbitMQ)
-- S3-compatible storage for data snapshots and models (MinIO)
-- Kubernetes-ready deployment (Helm)
+## 🚀 What this project does
 
-## Tech stack
-- FastAPI, Uvicorn
-- `uv` (dependency manager) with `pyproject.toml` + `uv.lock`
-- Celery + RabbitMQ
-- MinIO (S3-compatible)
-- Docker & Docker Compose
-- Kubernetes (Helm)
-- scikit-learn (v1), extensible to LightGBM
+The project demonstrates the complete path: **data → ML pipeline → model registry → API → Kubernetes → CI/CD**.
 
-## Local development
-### 0) Prerequisites
-- Docker (for RabbitMQ + MinIO)
-- uv (dependency management)
-- (optional) GitHub Actions CI runs ruff + pytest
+* Fetches real real-estate transactions from an external API
+* Builds clean, validated datasets
+* Trains ML models for price estimation
+* Applies quality gating before publishing models
+* Stores artifacts in S3-compatible storage (MinIO / GCS)
+* Serves predictions via FastAPI
+* Retrains models automatically on a schedule in Kubernetes
+* Deploys to GKE via Helm and GitHub Actions
 
-### 1) Configure environment
+## 🧱 High-level architecture
+```mermaid
+flowchart LR
+    subgraph External
+        EXT_API[External Real Estate API]
+    end
+
+    subgraph Training["Training (Kubernetes CronJob)"]
+        FETCH[Fetch + Normalize]
+        DATASET[Dataset + Manifest]
+        TRAIN[Train Model]
+        GATE[Quality Gating]
+        PUBLISH[Publish Model]
+    end
+
+    subgraph Storage["Object Storage (S3 compatible)"]
+        SNAPSHOTS[Snapshots]
+        MODELS[Models + latest.json]
+    end
+
+    subgraph API["Inference Service"]
+        REGISTRY[Model Registry]
+        PREDICT[Predictor]
+        FASTAPI[FastAPI /estimate]
+    end
+
+    EXT_API --> FETCH
+    FETCH --> DATASET
+    DATASET --> TRAIN
+    TRAIN --> GATE
+    GATE -->|pass| PUBLISH
+    PUBLISH --> MODELS
+    DATASET --> SNAPSHOTS
+
+    MODELS --> REGISTRY
+    REGISTRY --> PREDICT
+    PREDICT --> FASTAPI
+```
+
+## 📦 Components
+
+### 1. Training pipeline
+
+* Runs as Kubernetes CronJob
+* Periodically:
+   * fetches data for a given time window
+   * validates and normalizes rows
+   * trains a sklearn model
+   * evaluates metrics
+   * applies gating rules
+   * publishes artifacts if quality is acceptable
+
+**Artifacts stored:**
+* raw rows (`rows_raw.jsonl`)
+* training dataset (`dataset.parquet`)
+* manifest (`manifest.json`)
+* model (`model.pkl`)
+* registry pointer (`latest.json`)
+
+### 2. Model Registry
+
+* Stored in object storage
+* Each model version is immutable
+* `latest.json` points to the currently active model
+* API will not serve predictions until a valid model exists
+
+### 3. API service (FastAPI)
+
+**Endpoints:**
+* `GET /health` — liveness
+* `GET /ready` — readiness (model loaded)
+* `POST /estimate` — batch price estimation
+
+**Key design decisions:**
+* Batch-first API (`property_id → features`)
+* Strict validation (better no result than a wrong one)
+* Predictor logic isolated from HTTP layer
+
+### 4. Storage
+
+* **Local / kind:** MinIO
+* **GKE:** Google Cloud Storage via S3 interoperability
+* Same code works in both environments
+
+> ⚠️ **Note:** boto3 uploads require `ContentLength` to avoid aws-chunked uploads when using GCS S3 compatibility.
+
+## 🧠 Machine Learning
+
+### Current approach
+
+* Tabular regression (sklearn)
+* **Features:**
+   * areas (`total_area`, `usable_area`)
+   * location (lat/lon, municipality)
+   * building metadata
+   * real estate type
+
+### Metrics
+
+* MAE
+* RMSE
+* Metrics per:
+   * `realestate_type`
+   * top municipalities
+
+### Gating rules
+
+A new model is published only if:
+* enough training data is available
+* overall quality does not degrade beyond a threshold
+* key segment (`enebolig`) does not regress excessively
+
+**If gating fails** → previous model remains active.
+
+## ☸️ Kubernetes & Deployment
+
+* Helm chart (`deploy/helm`)
+* Separate configs for:
+   * `kind` (local)
+   * `GKE`
+* Resources and limits explicitly set
+* Training runs as CronJob
+* API runs as Deployment with readiness checks
+
+## 🔄 CI/CD
+
+**Release flow:**
+
+1. Push git tag `vX.Y.Z`
+2. GitHub Actions:
+   * build Docker image
+   * push to GHCR
+   * deploy to GKE via Helm
+   * update Kubernetes secrets
+3. New version rolls out automatically
+
+## 🧪 Local development
+
+### Prerequisites
+
+* Docker
+* Python 3.11+
+* `uv`
+* RabbitMQ (for local async)
+* MinIO (optional)
+
+### Run locally
 ```bash
 cp .env.example .env
 uv lock
-```
-### 2) Start infrastructure (RabbitMQ + MinIO)
-```bash
 make compose-up
 ```
 ## Useful Links
@@ -128,7 +263,13 @@ helm upgrade --install ree deploy/helm -n ree -f deploy/helm/values_kind.yaml
 ### Note:
 - Use you k8s config, example: `KUBECONFIG=~/.kube/kind-config kubectl`
 
+## 🛣️ Roadmap (next steps)
 
+* Model v2 (better models + relative error metrics)
+* Metrics endpoint (`/metrics`)
+* Monitoring (Prometheus / logs correlation)
+* Drift detection
+* Extended README + design narrative
 
 ## 📝 Notes
 
@@ -136,11 +277,6 @@ helm upgrade --install ree deploy/helm -n ree -f deploy/helm/values_kind.yaml
 In the development environment:
 - ✅ Application code runs **natively on your host** (fast hot-reload)
 - 🐳 RabbitMQ and MinIO run in **Docker containers**
-
-### Storage Strategy
-- **Local Development:** MinIO serves as an S3-compatible storage solution
-- **Production:** Same codebase connects to AWS S3 or any S3-compatible provider
-- **Configuration:** Switch between environments using environment variables only—no code changes required
 
 ## 🔄 Pipeline results
 
