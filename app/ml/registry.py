@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any
 
 from app.config import settings
 from app.ml.base import Predictor
@@ -92,3 +92,25 @@ class ModelRegistry:
                 key=model_ref.artifact_key
             )
             return SklearnPredictor.from_bytes(model_version=model_ref.model_version, data=data)
+
+    def get_active_metrics(self) -> dict[str, Any]:
+        ref = self._load_latest()
+        prefix = ref.artifact_key.rsplit("/", 1)[0]
+        metrics_key = f"{prefix}/metrics.json"
+
+        try:
+            metrics = self._storage.get_json(
+                bucket=settings.s3_bucket_models,
+                key=metrics_key,
+            )
+        except S3StorageError as e:
+            raise ModelNotReadyError(
+                f"Metrics not found for active model ({metrics_key})"
+            ) from e
+
+        return {
+            "model_version": ref.model_version,
+            "model_type": ref.model_type,
+            "metrics_key": metrics_key,
+            "metrics": metrics,
+        }
