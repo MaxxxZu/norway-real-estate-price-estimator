@@ -6,6 +6,7 @@ from app.config import settings
 from app.ml.metrics_summary import build_metrics_summary
 from app.ml.registry import ModelNotReadyError, ModelRegistry
 from app.storage.s3 import S3Storage
+from app.observability.prometheus import prometheus_response
 
 router = APIRouter(prefix="/metrics", tags=["monitoring"])
 
@@ -32,3 +33,8 @@ def metrics_summary() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=str(e))
 
     return build_metrics_summary(raw)
+
+
+@router.get("/prometheus")
+def metrics_prometheus():
+    return prometheus_response()

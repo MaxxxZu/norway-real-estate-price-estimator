@@ -36,32 +36,56 @@ flowchart LR
         FETCH[Fetch + Normalize]
         DATASET[Dataset + Manifest]
         TRAIN[Train Model]
-        GATE[Quality Gating]
-        PUBLISH[Publish Model]
+        EVAL[Compute metrics]
+        GATE[Quality gating]
+        PUBLISH[Publish artifacts + update latest.json]
     end
 
     subgraph Storage["Object Storage (S3 compatible)"]
-        SNAPSHOTS[Snapshots]
-        MODELS[Models + latest.json]
+        SNAP[Snapshots]
+        REG[Model registry + models]
     end
 
-    subgraph API["Inference Service"]
-        REGISTRY[Model Registry]
-        PREDICT[Predictor]
-        FASTAPI[FastAPI /estimate]
+    subgraph API["Inference (FastAPI)"]
+        READY[/ready/]
+        EST[/estimate/]
+        METRICS[/metrics/]
+        PROM[/metrics/prometheus/]
+        REGISTRY[ModelRegistry (cached)]
+        PRED[SklearnPredictor]
     end
 
-    EXT_API --> FETCH
-    FETCH --> DATASET
-    DATASET --> TRAIN
-    TRAIN --> GATE
-    GATE -->|pass| PUBLISH
-    PUBLISH --> MODELS
-    DATASET --> SNAPSHOTS
+    EXT_API --> FETCH --> DATASET --> TRAIN --> EVAL --> GATE
+    DATASET --> SNAP
+    GATE -->|pass| PUBLISH --> REG
 
-    MODELS --> REGISTRY
-    REGISTRY --> PREDICT
-    PREDICT --> FASTAPI
+    REG --> REGISTRY --> PRED --> EST
+    REGISTRY --> READY
+    REG --> METRICS
+    API --> PROM
+```
+
+## 🔁 Inference request flow
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant API as FastAPI
+  participant Reg as ModelRegistry
+  participant S3 as Object Storage
+  participant Pred as Predictor
+
+  Client->>API: POST /estimate (batch)
+  API->>Reg: get_predictor() (cached with TTL)
+  alt cache miss
+    Reg->>S3: GET latest.json
+    Reg->>S3: GET models/<ver>/model.pkl
+    Reg->>S3: GET models/<ver>/feature_schema.json
+  end
+  Reg-->>API: Predictor
+  API->>Pred: predict(batch)
+  Pred-->>API: prices
+  API-->>Client: 200 OK (or 422 / 503)
 ```
 
 ## 📦 Core components
@@ -146,24 +170,21 @@ Runs as a Kubernetes **CronJob** (and can be executed manually).
 - Real estate type
 - Derived ratios (e.g. area ratios)
 
+### Metrics used
+- **MAE** (NOK)
+- **RMSE** (NOK)
+- **MAPE / MdAPE** (relative error; robust vs outliers)
+- **AE_p90** (tail risk: 90th percentile absolute error)
+- **WAPE** (weighted absolute percentage error)
+
 ---
 
 
 ## 📊 Model Quality & Metrics
 
-### Raw metrics endpoint
+**GET `/metrics`** — raw metrics JSON from the model registry
 
-**GET `/metrics`**
-
-Returns the exact contents of `metrics.json` stored in the registry.
-
----
-
-## 🧪 Model Quality Report
-
-**GET `/metrics/summary`**
-
-A human-friendly report designed for quick evaluation by engineers and stakeholders.
+**GET `/metrics/summary`** — human-friendly summary (focus on realestate_type segments)
 
 ### Includes
 
@@ -194,6 +215,19 @@ A newly trained model is published **only if**:
 If gating fails → **previous model remains active**.
 
 This prevents silent production regressions.
+
+---
+
+## 🔍 Observability
+
+### Logs
+- JSON structured logs (structlog)
+- Each request includes `request_id` (from `X-Request-Id` or auto-generated)
+
+### Prometheus metrics
+- `GET /metrics/prometheus` exposes OpenMetrics format:
+  - `http_requests_total`
+  - `http_request_duration_seconds`
 
 ---
 
@@ -279,12 +313,16 @@ kubectl -n ree create job --from=cronjob/ree-training ree-training-manual
 
 ## 🛣️ Roadmap (next steps)
 
-- Rolling 12-month training window
-- Incremental dataset updates
-- Model v3 (feature interactions / geo features)
+- Rolling 12-month loader (incremental data)
+- Model v3 (CatBoost)
+- Richer geo features
 - Drift detection
-- Prometheus metrics & dashboards
-- Extended architecture narrative
+- Monitoring dashboards
+
+---
+
+## 📝 Notes
+This project is intentionally built as a production-like system, not just a notebook-to-API demo. The focus is on correctness, safety, and operability, not only on model accuracy.
 
 ---
 

@@ -4,6 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routes import router
 
+from app.observability.logging import configure_logging, log
+from app.observability.prometheus import PrometheusMiddleware
+from app.observability.request_id import RequestIdMiddleware
+
+configure_logging()
+log().info("logging_configured", env=settings.env)
+
 
 def create_app() -> FastAPI:
     api = FastAPI(
@@ -18,6 +25,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    api.add_middleware(RequestIdMiddleware)
+    api.add_middleware(PrometheusMiddleware)
     api.include_router(router)
 
     return api
