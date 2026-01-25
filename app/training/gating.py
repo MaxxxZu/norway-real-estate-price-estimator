@@ -1,87 +1,146 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from app.config import settings
 
 
 @dataclass(frozen=True)
-class GateDecision:
+class GateResult:
     passed: bool
     reasons: list[str]
     details: dict[str, Any]
 
 
-def _pct_degrade(prev: float, new: float) -> float | None:
-    if prev <= 0:
+def _get_metric(metrics: dict[str, Any], path: list[str]) -> Optional[float]:
+    cur: Any = metrics
+    for key in path:
+        if not isinstance(cur, dict) or key not in cur:
+            return None
+        cur = cur[key]
+    try:
+        return float(cur)
+    except (TypeError, ValueError):
         return None
+
+
+def _pct_change(new: float, prev: float) -> float:
+    if prev == 0:
+        return float("inf") if new > 0 else 0.0
     return (new - prev) / prev
+
+
+def _check_degradation(
+    *,
+    name: str,
+    new_val: Optional[float],
+    prev_val: Optional[float],
+    max_degrade_pct: float,
+    reasons: list[str],
+    checks: dict[str, Any],
+) -> None:
+    checks[name] = {
+        "new": new_val,
+        "prev": prev_val,
+        "max_degrade_pct": max_degrade_pct,
+    }
+    if new_val is None or prev_val is None:
+        checks[name]["status"] = "missing_metric"
+        return
+
+    degrade = _pct_change(new_val, prev_val)
+    checks[name]["degrade_pct"] = degrade
+
+    if degrade > max_degrade_pct:
+        reasons.append(f"degraded:{name}:{degrade:.3f} > {max_degrade_pct:.3f}")
+        checks[name]["status"] = "failed"
+    else:
+        checks[name]["status"] = "passed"
 
 
 def evaluate_publish_gate(
     *,
     rows_trainable: int,
     new_metrics: dict[str, Any],
-    prev_metrics: dict[str, Any] | None,
-) -> GateDecision:
+    prev_metrics: Optional[dict[str, Any]],
+) -> GateResult:
     reasons: list[str] = []
-    details: dict[str, Any] = {"thresholds": {}}
+    details: dict[str, Any] = {
+        "rows_trainable": rows_trainable,
+        "min_rows_required": settings.train_min_rows,
+        "has_prev": prev_metrics is not None,
+        "rules": {
+            "overall_max_degrade_pct": settings.gate_overall_mae_max_degrade_pct,
+            "overall_wape_max_degrade_pct": settings.gate_overall_wape_max_degrade_pct,
+            "enebolig_max_degrade_pct": settings.gate_enebolig_mae_max_degrade_pct,
+            "enebolig_wape_max_degrade_pct": settings.gate_enebolig_wape_max_degrade_pct,
+        },
+        "checks": {},
+    }
 
-    min_rows = int(settings.train_min_rows)
-    details["thresholds"]["train_min_rows"] = min_rows
-    details["rows_trainable"] = int(rows_trainable)
+    if rows_trainable < settings.train_min_rows:
+        reasons.append("insufficient_rows_trainable")
+        details["checks"]["min_rows"] = {"status": "failed"}
+        return GateResult(passed=False, reasons=reasons, details=details)
 
-    if rows_trainable < min_rows:
-        reasons.append(f"min_rows_failed: rows_trainable={rows_trainable} < {min_rows}")
+    details["checks"]["min_rows"] = {"status": "passed"}
+    if prev_metrics is None:
+        details["checks"]["comparison"] = {"status": "passed_no_prev"}
+        return GateResult(passed=True, reasons=[], details=details)
 
-    if not prev_metrics:
-        return GateDecision(passed=(len(reasons) == 0), reasons=reasons, details=details)
+    checks: dict[str, Any] = {}
+    _check_degradation(
+        name="overall.mdape",
+        new_val=_get_metric(new_metrics, ["overall", "mdape"]),
+        prev_val=_get_metric(prev_metrics, ["overall", "mdape"]),
+        max_degrade_pct=settings.gate_overall_mae_max_degrade_pct,
+        reasons=reasons,
+        checks=checks,
+    )
+    _check_degradation(
+        name="overall.ae_p90",
+        new_val=_get_metric(new_metrics, ["overall", "ae_p90"]),
+        prev_val=_get_metric(prev_metrics, ["overall", "ae_p90"]),
+        max_degrade_pct=settings.gate_overall_mae_max_degrade_pct,
+        reasons=reasons,
+        checks=checks,
+    )
+    _check_degradation(
+        name="overall.wape",
+        new_val=_get_metric(new_metrics, ["overall", "wape"]),
+        prev_val=_get_metric(prev_metrics, ["overall", "wape"]),
+        max_degrade_pct=settings.gate_overall_wape_max_degrade_pct,
+        reasons=reasons,
+        checks=checks,
+    )
+    _check_degradation(
+        name="enebolig.mdape",
+        new_val=_get_metric(new_metrics, ["by_realestate_type", "enebolig", "mdape"]),
+        prev_val=_get_metric(prev_metrics, ["by_realestate_type", "enebolig", "mdape"]),
+        max_degrade_pct=settings.gate_enebolig_mae_max_degrade_pct,
+        reasons=reasons,
+        checks=checks,
+    )
+    _check_degradation(
+        name="enebolig.ae_p90",
+        new_val=_get_metric(new_metrics, ["by_realestate_type", "enebolig", "ae_p90"]),
+        prev_val=_get_metric(prev_metrics, ["by_realestate_type", "enebolig", "ae_p90"]),
+        max_degrade_pct=settings.gate_enebolig_mae_max_degrade_pct,
+        reasons=reasons,
+        checks=checks,
+    )
+    _check_degradation(
+        name="enebolig.wape",
+        new_val=_get_metric(new_metrics, ["by_realestate_type", "enebolig", "wape"]),
+        prev_val=_get_metric(prev_metrics, ["by_realestate_type", "enebolig", "wape"]),
+        max_degrade_pct=settings.gate_enebolig_wape_max_degrade_pct,
+        reasons=reasons,
+        checks=checks,
+    )
 
-    try:
-        prev_overall_mae = float(prev_metrics["overall"]["mae"])
-        new_overall_mae = float(new_metrics["overall"]["mae"])
-        details["prev_overall_mae"] = prev_overall_mae
-        details["new_overall_mae"] = new_overall_mae
+    passed = len(reasons) == 0
+    details["checks"]["comparison"] = {
+        "status": "passed" if passed else "failed",
+        "checks": checks,
+    }
 
-        degrade = _pct_degrade(prev_overall_mae, new_overall_mae)
-        details["overall_mae_degrade_pct"] = degrade
-
-        max_degrade = float(settings.gate_overall_mae_max_degrade_pct)
-        details["thresholds"]["overall_mae_max_degrade_pct"] = max_degrade
-
-        if degrade is not None and degrade > max_degrade:
-            reasons.append(
-                f"overall_mae_degraded: {degrade:.2%} > {max_degrade:.2%}"
-            )
-    except Exception:
-        reasons.append("overall_mae_compare_failed")
-
-    try:
-        prev_by_type = prev_metrics.get("by_realestate_type_mae", {}) or {}
-        new_by_type = new_metrics.get("by_realestate_type_mae", {}) or {}
-
-        prev_enebolig = prev_by_type.get("enebolig")
-        new_enebolig = new_by_type.get("enebolig")
-
-        details["prev_enebolig_mae"] = prev_enebolig
-        details["new_enebolig_mae"] = new_enebolig
-
-        if prev_enebolig is not None and new_enebolig is not None:
-            prev_enebolig = float(prev_enebolig)
-            new_enebolig = float(new_enebolig)
-
-            degrade = _pct_degrade(prev_enebolig, new_enebolig)
-            details["enebolig_mae_degrade_pct"] = degrade
-
-            max_degrade = float(settings.gate_enebolig_mae_max_degrade_pct)
-            details["thresholds"]["enebolig_mae_max_degrade_pct"] = max_degrade
-
-            if degrade is not None and degrade > max_degrade:
-                reasons.append(
-                    f"enebolig_mae_degraded: {degrade:.2%} > {max_degrade:.2%}"
-                )
-        else:
-            details["enebolig_compare_skipped"] = True
-    except Exception:
-        reasons.append("enebolig_mae_compare_failed")
-
-    return GateDecision(passed=(len(reasons) == 0), reasons=reasons, details=details)
+    return GateResult(passed=passed, reasons=reasons, details=details)

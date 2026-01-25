@@ -40,9 +40,11 @@ class Settings(BaseSettings):
 
     # Training publish gating
     train_min_rows: int = Field(default=500)
-    gate_overall_mae_max_degrade_pct: float = Field(default=0.05)
 
+    gate_overall_mae_max_degrade_pct: float = Field(default=0.05)
     gate_enebolig_mae_max_degrade_pct: float = Field(default=0.07)
+    gate_overall_wape_max_degrade_pct: float = Field(default=0.10)
+    gate_enebolig_wape_max_degrade_pct: float = Field(default=0.12)
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -181,10 +181,6 @@ class Pipeline:
         training_manifest = {
             "model_version": model_version,
             "snapshot_prefix": snapshot_prefix,
-            "data_window": {
-                "start_date": self.manifest.get("period", {}).get("start_date"),
-                "end_date": self.manifest.get("period", {}).get("end_date"),
-            },
             "period": self.manifest["period"],
             "counts": self.manifest["counts"],
             "dropped_reasons": self.manifest["dropped_reasons"],
