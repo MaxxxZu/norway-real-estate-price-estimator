@@ -51,7 +51,7 @@ flowchart LR
         EST[/estimate/]
         METRICS[/metrics/]
         PROM[/metrics/prometheus/]
-        REGISTRY[ModelRegistry (cached)]
+        REGISTRY[ModelRegistry - cached]
         PRED[SklearnPredictor]
     end
 
