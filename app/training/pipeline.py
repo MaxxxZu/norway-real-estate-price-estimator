@@ -3,7 +3,7 @@ from typing import Any
 
 from app.clients.api_client import ApiClient
 from app.storage.s3 import S3Storage
-from app.training.dataset import build_trainable_dataset, DatasetBuildResult
+from app.training.dataset import DatasetBuildResult, build_trainable_dataset
 from app.training.fetch import (
     FetchConfig,
     build_properties,
@@ -15,15 +15,15 @@ from app.training.fetch import (
 from app.training.gating import evaluate_publish_gate
 from app.training.modeling import train_and_evaluate
 from app.training.publish import (
+    try_load_previous_metrics,
     update_latest_json,
     upload_model_artifacts,
-    try_load_previous_metrics
 )
 from app.training.snapshots import (
     SNAPSHOT_LATEST_KEY,
-    snapshot_paths,
     load_manifest,
     load_trainable_rows_from_parquet,
+    snapshot_paths,
     upload_snapshots,
 )
 from app.training.versioning import make_model_version

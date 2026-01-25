@@ -1,18 +1,17 @@
 from dataclasses import dataclass
-from typing import Any
 from datetime import date
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.ensemble import HistGradientBoostingRegressor
 
 from app.training.metrics import compute_metrics
-
 
 CATEGORICAL_COLS: list[str] = [
     "realestate_type",

@@ -3,7 +3,6 @@ from datetime import date
 
 from app.training.pipeline import run_training_pipeline
 
-
 DATE_FORMAT = "%Y-%m-%d"
 
 

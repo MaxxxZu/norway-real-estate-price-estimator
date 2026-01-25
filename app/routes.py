@@ -1,16 +1,14 @@
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, status, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 
+from app.api.examples import ESTIMATE_REQUEST_EXAMPLES
 from app.config import settings
+from app.ml.base import Predictor
 from app.ml.registry import ModelNotReadyError, ModelRegistry
 from app.schemas import EstimateResponse, HealthCheckResponse, ValidationErrorResponse
 from app.services.estimate_service import estimate_batch
 from app.storage.s3 import S3Storage
-from app.ml.base import Predictor
-
-from app.api.examples import ESTIMATE_REQUEST_EXAMPLES
-
 
 router = APIRouter()
 

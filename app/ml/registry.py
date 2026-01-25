@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Any, Optional
 
 from app.config import settings
 from app.ml.base import Predictor

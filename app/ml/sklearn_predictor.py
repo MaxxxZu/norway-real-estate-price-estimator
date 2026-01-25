@@ -1,10 +1,10 @@
+from datetime import date
 from io import BytesIO
 from typing import Any, Optional
-from datetime import date
 
 import joblib
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from app.ml.base import Predictor
 from app.schemas import EstimationFeatures

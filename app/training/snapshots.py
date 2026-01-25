@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
-from typing import Any
 from io import BytesIO
+from typing import Any
 
 import pandas as pd
 
