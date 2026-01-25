@@ -21,10 +21,10 @@ from app.training.publish import (
 )
 from app.training.snapshots import (
     SnapshotPaths,
+    fetch_latest_snapshot_ref,
     load_manifest,
     load_trainable_rows_from_parquet,
     upload_snapshots,
-    fetch_latest_snapshot_ref,
 )
 from app.training.versioning import make_model_version
 
