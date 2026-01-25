@@ -17,9 +17,6 @@ class SnapshotPaths:
     manifest_key: str
 
 
-SNAPSHOT_LATEST_KEY = "snapshots/latest.json"
-
-
 def snapshot_paths(start_date: str, end_date: str) -> SnapshotPaths:
     prefix = f"snapshots/{start_date}_{end_date}"
     return SnapshotPaths(
@@ -87,3 +84,17 @@ def load_trainable_rows_from_parquet(storage: S3Storage, dataset_key: str) -> li
     raw = storage.get_bytes(bucket=settings.s3_bucket_snapshots, key=dataset_key)
     df = pd.read_parquet(BytesIO(raw))
     return df.to_dict(orient="records")
+
+
+def fetch_latest_snapshot_ref(storage: S3Storage) -> SnapshotPaths:
+    latest = storage.get_json(bucket=settings.s3_bucket_models, key="latest.json")
+    snapshot_prefix = str(latest.get("snapshot_prefix", "")).strip()
+    if not snapshot_prefix:
+        raise RuntimeError("Latest model metadata is missing snapshot_prefix")
+
+    return SnapshotPaths(
+        prefix=snapshot_prefix,
+        raw_rows_key=f"{snapshot_prefix}/rows_raw.jsonl",
+        dataset_key=f"{snapshot_prefix}/dataset.parquet",
+        manifest_key=f"{snapshot_prefix}/manifest.json",
+    )

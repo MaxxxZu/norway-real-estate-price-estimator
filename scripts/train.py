@@ -1,7 +1,7 @@
 import argparse
 from datetime import date
 
-from app.training.pipeline import run_training_pipeline
+from app.training.pipeline import Pipeline
 
 DATE_FORMAT = "%Y-%m-%d"
 
@@ -75,14 +75,14 @@ def main() -> None:
         if args.end_date < args.start_date:
             raise SystemExit("end-date must be >= start-date")
 
-    res = run_training_pipeline(
+    res = Pipeline(
         start_date=args.start_date,
         end_date=args.end_date,
         dry_run=bool(args.dry_run),
         train=bool(args.train),
         publish=bool(args.publish),
         force_fetch=bool(args.force_fetch),
-    )
+    ).process()
 
     print("OK: snapshots")
     print(f"- {res['snapshots']['raw_rows_key']}")

@@ -20,227 +20,208 @@ from app.training.publish import (
     upload_model_artifacts,
 )
 from app.training.snapshots import (
-    SNAPSHOT_LATEST_KEY,
+    SnapshotPaths,
     load_manifest,
     load_trainable_rows_from_parquet,
-    snapshot_paths,
     upload_snapshots,
+    fetch_latest_snapshot_ref,
 )
 from app.training.versioning import make_model_version
 
 
-def _add_snapshot(
-    start_date: date,
-    end_date: date,
-    turnovers_raw: list[dict],
-    turnovers: list[dict],
-    cadastral_unit_ids: list[str],
-    properties: list[dict],
-    rows_raw: list[dict],
-    dataset_result: DatasetBuildResult,
-    dry_run: bool,
-    train: bool,
-    publish: bool,
-) -> list[dict, Any]:
-    storage = S3Storage()
-    manifest = {
-        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
-        "counts": {
-            "turnovers_raw": len(turnovers_raw),
-            "turnovers_normalized": len(turnovers),
-            "cadastral_unit_ids": len(cadastral_unit_ids),
-            "properties_matched": len(properties),
-            "rows_raw": len(rows_raw),
-            "rows_trainable": len(dataset_result.trainable_rows),
-        },
-        "dropped_reasons": dataset_result.dropped_reasons,
-        "dry_run": bool(dry_run),
-        "train": bool(train),
-        "publish": bool(publish),
-    }
+class Pipeline:
+    def __init__(
+        self,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        dry_run: bool = False,
+        train: bool = True,
+        publish: bool = True,
+        force_fetch: bool = False
+    ):
+        self.start_date = start_date
+        self.end_date = end_date
+        self.dry_run = dry_run
+        self.train = train
+        self.publish = publish
+        self.force_fetch = force_fetch
+        self._validate_params()
+        self.storage = S3Storage()
+        self.api_client = ApiClient()
+        self.cfg = FetchConfig()
+        self.result: dict[str, Any] = {}
+        self.manifest: dict[str, Any] = {}
+        self.paths: SnapshotPaths = None
 
-    paths = upload_snapshots(
-        storage=storage,
-        start_date=start_date.isoformat(),
-        end_date=end_date.isoformat(),
-        raw_rows=rows_raw,
-        trainable_rows=dataset_result.trainable_rows,
-        manifest=manifest,
-    )
+    def process(self) -> dict:
+        self._build_dataset()
+        self._fetch_latest_snapshot()
+        self._build_initial_result()
+        train_result = self._train_model()
+        self._publish_model(train_result)
 
-    return manifest, paths
+        return self.result
 
+    def _validate_params(self) -> None:
+        if self.dry_run and self.train:
+            raise ValueError("dry_run and train are mutually exclusive")
 
-def _publish_model(
-    start_date: date,
-    end_date: date,
-    manifest: dict[str, Any],
-    train_res: Any
-) -> dict:
-    storage = S3Storage()
+        if self.publish and not self.train:
+            raise ValueError("publish=True requires train=True")
 
-    model_version = make_model_version()
-    snapshot_prefix = snapshot_paths(start_date.isoformat(), end_date.isoformat()).prefix
+        if not self.force_fetch:
+            return
 
-    prev_metrics = try_load_previous_metrics(storage)
-    gate = evaluate_publish_gate(
-        rows_trainable=int(manifest["counts"]["rows_trainable"]),
-        new_metrics=train_res.metrics,
-        prev_metrics=prev_metrics,
-    )
+        if self.start_date is None or self.end_date is None:
+            raise ValueError("force_fetch=True requires start_date and end_date")
 
-    training_window_months = 12
+        if self.end_date < self.start_date:
+            raise ValueError("end_date must be >= start_date")
 
-    training_manifest = {
-        "model_version": model_version,
-        "snapshot_prefix": snapshot_prefix,
-        "data_window": {
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-            "window_months": training_window_months,
-        },
-        "period": manifest["period"],
-        "counts": manifest["counts"],
-        "dropped_reasons": manifest["dropped_reasons"],
-        "metrics": train_res.metrics,
-        "gating": {
-            "passed": gate.passed,
-            "reasons": gate.reasons,
-            "details": gate.details,
-        },
-    }
+        return
 
-    keys = upload_model_artifacts(
-        storage=storage,
-        model_version=model_version,
-        pipeline=train_res.pipeline,
-        metrics=train_res.metrics,
-        feature_schema=train_res.feature_schema,
-        training_manifest=training_manifest,
-    )
+    def _build_dataset(self) -> None:
+        if not self.force_fetch:
+            return
 
-    published = False
-    latest_updated = False
-    if gate.passed:
-        update_latest_json(
-            storage=storage,
-            model_version=model_version,
-            artifact_key=keys["model_key"],
-            snapshot_prefix=snapshot_prefix,
+        turnovers_raw = fetch_turnovers(self.api_client, self.start_date, self.end_date, self.cfg)
+        turnovers = normalize_turnovers(turnovers_raw)
+
+        cadastral_unit_ids = [t["cadastral_unit_ids"][0] for t in turnovers]
+        properties = build_properties(self.api_client, cadastral_unit_ids)
+        estimation_params = fetch_estimation_params(self.api_client, properties)
+        rows_raw = build_rows(turnovers, properties, estimation_params)
+
+        dataset_result = build_trainable_dataset(rows_raw)
+        self._add_snapshot(
+            dataset_result, turnovers_raw, turnovers, cadastral_unit_ids, properties, rows_raw
         )
-        published = True
-        latest_updated = True
 
-    return {
-        "attempted": True,
-        "published": published,
-        "latest_updated": latest_updated,
-        "model_version": model_version,
-        "model_key": keys["model_key"],
-        "gating_passed": gate.passed,
-        "gating_reasons": gate.reasons,
-    }
-
-
-def run_training_pipeline(
-    *,
-    start_date: date,
-    end_date: date,
-    dry_run: bool,
-    train: bool,
-    publish: bool,
-    force_fetch: bool = False,
-) -> dict:
-    if publish and not train:
-        raise ValueError("publish=True requires train=True")
-    if dry_run and train:
-        raise ValueError("dry_run and train are mutually exclusive")
-
-    storage = S3Storage()
-    if not force_fetch:
-        latest = load_manifest(storage, SNAPSHOT_LATEST_KEY)
-        dataset_key = str(latest.get("dataset_key", "")).strip()
-        manifest_key = str(latest.get("manifest_key", "")).strip()
-        raw_rows_key = str(latest.get("raw_rows_key", "")).strip()
-
-        if not dataset_key or not manifest_key:
-            raise RuntimeError("Invalid snapshots/latest.json: missing dataset_key/manifest_key")
-
-        manifest = load_manifest(storage, manifest_key)
-        result: dict[str, Any] = {
-            "snapshots": {
-                "raw_rows_key": raw_rows_key or "",
-                "dataset_key": dataset_key,
-                "manifest_key": manifest_key,
-                "snapshot_latest_key": SNAPSHOT_LATEST_KEY,
+    def _add_snapshot(
+        self,
+        dataset_result: DatasetBuildResult,
+        turnovers_raw: list[dict],
+        turnovers: list[dict],
+        cadastral_unit_ids: list[str],
+        properties: list[dict],
+        rows_raw: list[dict],
+    ) -> None:
+        self.manifest = {
+            "period": {
+                "start_date": self.start_date.isoformat(),
+                "end_date": self.end_date.isoformat()
             },
-            "manifest": manifest,
-            "reused_latest_snapshot": True,
+            "counts": {
+                "turnovers_raw": len(turnovers_raw),
+                "turnovers_normalized": len(turnovers),
+                "cadastral_unit_ids": len(cadastral_unit_ids),
+                "properties_matched": len(properties),
+                "rows_raw": len(rows_raw),
+                "rows_trainable": len(dataset_result.trainable_rows),
+            },
+            "dropped_reasons": dataset_result.dropped_reasons,
+            "dry_run": bool(self.dry_run),
+            "train": bool(self.train),
+            "publish": bool(self.publish),
         }
 
-        if dry_run:
-            return result
+        self.paths = upload_snapshots(
+            storage=self.storage,
+            start_date=self.start_date.isoformat(),
+            end_date=self.end_date.isoformat(),
+            raw_rows=rows_raw,
+            trainable_rows=dataset_result.trainable_rows,
+            manifest=self.manifest,
+        )
 
-        trainable_rows = load_trainable_rows_from_parquet(storage, dataset_key)
-        train_res = train_and_evaluate(trainable_rows)
-        result["metrics"] = train_res.metrics
+    def _fetch_latest_snapshot(self) -> None:
+        if self.force_fetch:
+            return
 
-        if publish:
-            p = manifest.get("period") or {}
-            sd = date.fromisoformat(p["start_date"])
-            ed = date.fromisoformat(p["end_date"])
-            result["published"] = _publish_model(sd, ed, manifest, train_res)
+        self.paths = fetch_latest_snapshot_ref(self.storage)
+        self.manifest = load_manifest(self.storage, self.paths.manifest_key)
 
-        return result
+    def _build_initial_result(self) -> None:
+        self.result = {
+            "snapshots": {
+                "raw_rows_key": self.paths.raw_rows_key,
+                "dataset_key": self.paths.dataset_key,
+                "manifest_key": self.paths.manifest_key,
+            },
+            "manifest": self.manifest,
+        }
 
-    if start_date is None or end_date is None:
-        raise ValueError("force_fetch=True requires start_date and end_date")
-    if end_date < start_date:
-        raise ValueError("end_date must be >= start_date")
+    def _train_model(self) -> Any:
+        if not self.train:
+            return
 
-    api = ApiClient()
-    cfg = FetchConfig()
+        trainable_rows = load_trainable_rows_from_parquet(
+            self.storage,
+            self.paths.dataset_key,
+        )
+        train_result = train_and_evaluate(trainable_rows)
 
-    turnovers_raw = fetch_turnovers(api, start_date, end_date, cfg)
-    turnovers = normalize_turnovers(turnovers_raw)
+        self.result["metrics"] = train_result.metrics
 
-    cadastral_unit_ids = [t["cadastral_unit_ids"][0] for t in turnovers]
-    properties = build_properties(api, cadastral_unit_ids)
+        return train_result
 
-    estimation_params = fetch_estimation_params(api, properties)
-    rows_raw = build_rows(turnovers, properties, estimation_params)
+    def _publish_model(self, train_result) -> None:
+        if not self.publish:
+            return
 
-    dataset_result = build_trainable_dataset(rows_raw)
-    manifest, paths = _add_snapshot(
-        start_date,
-        end_date,
-        turnovers_raw,
-        turnovers,
-        cadastral_unit_ids,
-        properties,
-        rows_raw,
-        dataset_result,
-        dry_run,
-        train,
-        publish,
-    )
+        model_version = make_model_version()
+        snapshot_prefix = self.paths.prefix
+        prev_metrics = try_load_previous_metrics(self.storage)
+        gate = evaluate_publish_gate(
+            rows_trainable=int(self.manifest["counts"]["rows_trainable"]),
+            new_metrics=train_result.metrics,
+            prev_metrics=prev_metrics,
+        )
 
-    result: dict = {
-        "snapshots": {
-            "raw_rows_key": paths.raw_rows_key,
-            "dataset_key": paths.dataset_key,
-            "manifest_key": paths.manifest_key,
-        },
-        "manifest": manifest,
-    }
-    if dry_run:
-        return result
+        training_manifest = {
+            "model_version": model_version,
+            "snapshot_prefix": snapshot_prefix,
+            "data_window": {
+                "start_date": self.manifest.get("period", {}).get("start_date"),
+                "end_date": self.manifest.get("period", {}).get("end_date"),
+            },
+            "period": self.manifest["period"],
+            "counts": self.manifest["counts"],
+            "dropped_reasons": self.manifest["dropped_reasons"],
+            "metrics": train_result.metrics,
+            "gating": {
+                "passed": gate.passed,
+                "reasons": gate.reasons,
+                "details": gate.details,
+            },
+        }
 
-    train_res = train_and_evaluate(dataset_result.trainable_rows)
-    result["metrics"] = train_res.metrics
-    if not publish:
-        return result
+        keys = upload_model_artifacts(
+            storage=self.storage,
+            model_version=model_version,
+            pipeline=train_result.pipeline,
+            metrics=train_result.metrics,
+            feature_schema=train_result.feature_schema,
+            training_manifest=training_manifest,
+        )
+        published = False
+        latest_updated = False
+        if gate.passed:
+            update_latest_json(
+                storage=self.storage,
+                model_version=model_version,
+                artifact_key=keys["model_key"],
+                snapshot_prefix=snapshot_prefix,
+            )
+            published = True
+            latest_updated = True
 
-    result["published"] = _publish_model(start_date, end_date, manifest, train_res)
-
-    return result
+        self.result["published"] = {
+            "attempted": True,
+            "published": published,
+            "latest_updated": latest_updated,
+            "model_version": model_version,
+            "model_key": keys["model_key"],
+            "gating_passed": gate.passed,
+            "gating_reasons": gate.reasons,
+        }
