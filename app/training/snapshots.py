@@ -1,11 +1,12 @@
 import json
 from dataclasses import dataclass
 from typing import Any
+from io import BytesIO
 
 import pandas as pd
 
 from app.config import settings
-from app.storage.s3 import S3Storage
+from app.storage.s3 import S3Storage, S3StorageError
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,9 @@ class SnapshotPaths:
     raw_rows_key: str
     dataset_key: str
     manifest_key: str
+
+
+SNAPSHOT_LATEST_KEY = "snapshots/latest.json"
 
 
 def snapshot_paths(start_date: str, end_date: str) -> SnapshotPaths:
@@ -61,3 +65,25 @@ def upload_snapshots(
     upload_manifest(storage, settings.s3_bucket_snapshots, paths.manifest_key, manifest)
 
     return paths
+
+
+def snapshot_exists(storage: S3Storage, paths: SnapshotPaths) -> bool:
+    return storage.exists(settings.s3_bucket_snapshots, paths.dataset_key) and storage.exists(
+        settings.s3_bucket_snapshots, paths.manifest_key
+    )
+
+
+def load_manifest(storage: S3Storage, manifest_key: str) -> dict[str, Any]:
+    try:
+        return storage.get_json(bucket=settings.s3_bucket_snapshots, key=manifest_key)
+    except S3StorageError as e:
+        raise RuntimeError(
+            f"Latest snapshot is not initialized (missing {manifest_key}). "
+            "Run training with --force-fetch to create it."
+        ) from e
+
+
+def load_trainable_rows_from_parquet(storage: S3Storage, dataset_key: str) -> list[dict[str, Any]]:
+    raw = storage.get_bytes(bucket=settings.s3_bucket_snapshots, key=dataset_key)
+    df = pd.read_parquet(BytesIO(raw))
+    return df.to_dict(orient="records")

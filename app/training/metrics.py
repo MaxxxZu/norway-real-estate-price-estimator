@@ -2,6 +2,9 @@ import numpy as np
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+    denom = float(np.sum(np.abs(y_true)))
+    wape = float(np.sum(np.abs(y_true - y_pred)) / denom) if denom > 0 else float("nan")
+
     y_true = np.asarray(y_true, dtype=float)
     y_pred = np.asarray(y_pred, dtype=float)
 
@@ -26,4 +29,5 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
         "mape": mape,
         "mdape": mdape,
         "ae_p90": ae_p90,
+        "wape": wape,
     }

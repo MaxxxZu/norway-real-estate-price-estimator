@@ -2,7 +2,6 @@ import argparse
 from datetime import date
 
 from app.training.pipeline import run_training_pipeline
-from app.training.window import window_start
 
 
 DATE_FORMAT = "%Y-%m-%d"
@@ -15,39 +14,44 @@ def _parse_date(value: str) -> date:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Training pipeline: fetch -> dataset -> train -> publish"
-    )
-    parser.add_argument(
-        "--end-date",
-        required=True,
-        type=_parse_date,
-        help=(f"End date in format {DATE_FORMAT} (example: 2022-04-01). ")
+                    "(default uses latest snapshot)"
     )
     parser.add_argument(
         "--start-date",
-        required=False,
         type=_parse_date,
-        help=(f"Optional start date in format {DATE_FORMAT} (example: 2022-04-01). ")
+        default=None,
+        help=f"Start date in format {DATE_FORMAT} (example: 2025-01-01). "
+             "Required only with --force-fetch.",
     )
     parser.add_argument(
-        "--window-months",
-        type=int,
-        default=12,
-        help="Trailing window size in months (used when --start-date is omitted). Default: 12.",
+        "--end-date",
+        type=_parse_date,
+        default=None,
+        help=f"End date in format {DATE_FORMAT} (example: 2025-12-31). "
+             "Required only with --force-fetch.",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Only fetch+snapshot (no training/publish model)"
+        help="Only snapshot (no training/publish). If no --force-fetch, will "
+             "only validate that latest snapshot exists.",
     )
     parser.add_argument(
         "--train",
         action="store_true",
-        help="Train a sklearn model on the dataset"
+        help="Train a sklearn model on the dataset",
     )
     parser.add_argument(
         "--publish",
         action="store_true",
-        help="Publish model artifacts and update latest.json (requires --train)"
+        help="Publish model artifacts and update latest.json (requires --train)",
+    )
+
+    parser.add_argument(
+        "--force-fetch",
+        action="store_true",
+        help="Fetch from external API for the given dates, build snapshot "
+             "and update snapshots/latest.json.",
     )
 
     return parser
@@ -66,23 +70,27 @@ def main() -> None:
     if args.publish and not args.train:
         raise SystemExit("--publish requires --train.")
 
-    end_date = args.end_date
-    start_date: date = args.start_date or window_start(end_date, args.window_months)
-    if end_date < start_date:
-        raise SystemExit("end-date must be >= start-date")
+    if args.force_fetch:
+        if args.start_date is None or args.end_date is None:
+            raise SystemExit("--force-fetch requires --start-date and --end-date.")
+        if args.end_date < args.start_date:
+            raise SystemExit("end-date must be >= start-date")
 
     res = run_training_pipeline(
-        start_date=start_date,
-        end_date=end_date,
+        start_date=args.start_date,
+        end_date=args.end_date,
         dry_run=bool(args.dry_run),
         train=bool(args.train),
         publish=bool(args.publish),
+        force_fetch=bool(args.force_fetch),
     )
 
-    print("OK: snapshots uploaded")
+    print("OK: snapshots")
     print(f"- {res['snapshots']['raw_rows_key']}")
     print(f"- {res['snapshots']['dataset_key']}")
     print(f"- {res['snapshots']['manifest_key']}")
+    if "snapshot_latest_key" in res["snapshots"]:
+        print(f"- {res['snapshots']['snapshot_latest_key']}")
 
     if args.dry_run:
         return

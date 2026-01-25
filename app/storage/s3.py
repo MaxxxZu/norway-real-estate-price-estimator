@@ -1,5 +1,4 @@
 import json
-from dataclasses import dataclass
 from typing import Any, Optional
 
 import boto3
@@ -11,12 +10,6 @@ from app.config import settings
 
 class S3StorageError(RuntimeError):
     pass
-
-
-@dataclass(frozen=True)
-class S3ObjectRef:
-    bucket: str
-    key: str
 
 
 cfg = Config(
@@ -38,6 +31,16 @@ class S3Storage:
             use_ssl=settings.s3_secure,
             config=cfg,
         )
+
+    def exists(self, bucket: str, key: str) -> bool:
+        try:
+            self._client.head_object(Bucket=bucket, Key=key)
+            return True
+        except ClientError as e:
+            code = str(e.response.get("Error", {}).get("Code", ""))
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                return False
+            raise S3StorageError(f"Failed to head s3://{bucket}/{key}") from e
 
     def get_bytes(self, bucket: str, key: str) -> bytes:
         try:

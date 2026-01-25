@@ -72,6 +72,14 @@ class ModelRegistry:
             artifact_key=artifact_key,
         )
 
+    def _load_feature_schema(self, artifact_key: str) -> dict[str, Any]:
+        prefix = artifact_key.rsplit("/", 1)[0]
+        schema_key = f"{prefix}/feature_schema.json"
+        try:
+            return self._storage.get_json(bucket=settings.s3_bucket_models, key=schema_key)
+        except S3StorageError as e:
+            raise ModelNotReadyError(f"Missing feature schema: {schema_key}") from e
+
     def _build_predictor(self, model_ref: ModelRef) -> Predictor:
         if model_ref.model_type not in {"stub", "sklearn"}:
             raise ModelNotReadyError(f"Unsupported model type: {model_ref.model_type}")
@@ -91,7 +99,14 @@ class ModelRegistry:
                 bucket=settings.s3_bucket_models,
                 key=model_ref.artifact_key
             )
-            return SklearnPredictor.from_bytes(model_version=model_ref.model_version, data=data)
+            schema = self._load_feature_schema(model_ref.artifact_key)
+            prediction_transform = str(schema.get("prediction_transform", "")).strip()
+
+            return SklearnPredictor.from_bytes(
+                model_version=model_ref.model_version,
+                data=data,
+                prediction_transform=prediction_transform
+            )
 
     def get_active_metrics(self) -> dict[str, Any]:
         ref = self._load_latest()

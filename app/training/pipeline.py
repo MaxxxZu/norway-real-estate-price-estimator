@@ -19,7 +19,13 @@ from app.training.publish import (
     upload_model_artifacts,
     try_load_previous_metrics
 )
-from app.training.snapshots import snapshot_paths, upload_snapshots
+from app.training.snapshots import (
+    SNAPSHOT_LATEST_KEY,
+    snapshot_paths,
+    load_manifest,
+    load_trainable_rows_from_parquet,
+    upload_snapshots,
+)
 from app.training.versioning import make_model_version
 
 
@@ -143,12 +149,52 @@ def run_training_pipeline(
     dry_run: bool,
     train: bool,
     publish: bool,
+    force_fetch: bool = False,
 ) -> dict:
     if publish and not train:
         raise ValueError("publish=True requires train=True")
     if dry_run and train:
         raise ValueError("dry_run and train are mutually exclusive")
 
+    storage = S3Storage()
+    if not force_fetch:
+        latest = load_manifest(storage, SNAPSHOT_LATEST_KEY)
+        dataset_key = str(latest.get("dataset_key", "")).strip()
+        manifest_key = str(latest.get("manifest_key", "")).strip()
+        raw_rows_key = str(latest.get("raw_rows_key", "")).strip()
+
+        if not dataset_key or not manifest_key:
+            raise RuntimeError("Invalid snapshots/latest.json: missing dataset_key/manifest_key")
+
+        manifest = load_manifest(storage, manifest_key)
+        result: dict[str, Any] = {
+            "snapshots": {
+                "raw_rows_key": raw_rows_key or "",
+                "dataset_key": dataset_key,
+                "manifest_key": manifest_key,
+                "snapshot_latest_key": SNAPSHOT_LATEST_KEY,
+            },
+            "manifest": manifest,
+            "reused_latest_snapshot": True,
+        }
+
+        if dry_run:
+            return result
+
+        trainable_rows = load_trainable_rows_from_parquet(storage, dataset_key)
+        train_res = train_and_evaluate(trainable_rows)
+        result["metrics"] = train_res.metrics
+
+        if publish:
+            p = manifest.get("period") or {}
+            sd = date.fromisoformat(p["start_date"])
+            ed = date.fromisoformat(p["end_date"])
+            result["published"] = _publish_model(sd, ed, manifest, train_res)
+
+        return result
+
+    if start_date is None or end_date is None:
+        raise ValueError("force_fetch=True requires start_date and end_date")
     if end_date < start_date:
         raise ValueError("end_date must be >= start_date")
 
