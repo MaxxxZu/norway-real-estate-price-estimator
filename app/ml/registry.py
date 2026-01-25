@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Any, Optional
 
 from app.config import settings
 from app.ml.base import Predictor
@@ -72,26 +72,52 @@ class ModelRegistry:
             artifact_key=artifact_key,
         )
 
+    def _load_feature_schema(self, artifact_key: str) -> dict[str, Any]:
+        prefix = artifact_key.rsplit("/", 1)[0]
+        schema_key = f"{prefix}/feature_schema.json"
+        try:
+            return self._storage.get_json(bucket=settings.s3_bucket_models, key=schema_key)
+        except S3StorageError as e:
+            raise ModelNotReadyError(f"Missing feature schema: {schema_key}") from e
+
     def _build_predictor(self, model_ref: ModelRef) -> Predictor:
         if model_ref.model_type not in {"stub", "sklearn"}:
             raise ModelNotReadyError(f"Unsupported model type: {model_ref.model_type}")
 
         if model_ref.model_type == "stub":
-            artifact = self._storage.get_json(
-                bucket=settings.s3_bucket_models,
-                key=model_ref.artifact_key
-            )
+            try:
+                artifact = self._storage.get_json(
+                    bucket=settings.s3_bucket_models,
+                    key=model_ref.artifact_key
+                )
+            except S3StorageError as e:
+                raise ModelNotReadyError(
+                    f"Failed to load stub artifact: {model_ref.artifact_key}"
+                ) from e
             return StubPredictor.from_artifact(
                 model_version=model_ref.model_version,
                 artifact=artifact
             )
 
         if model_ref.model_type == "sklearn":
-            data = self._storage.get_bytes(
-                bucket=settings.s3_bucket_models,
-                key=model_ref.artifact_key
+            try:
+                data = self._storage.get_bytes(
+                    bucket=settings.s3_bucket_models,
+                    key=model_ref.artifact_key,
+                )
+            except S3StorageError as e:
+                raise ModelNotReadyError(
+                    f"Failed to load model artifact: {model_ref.artifact_key}"
+                ) from e
+
+            schema = self._load_feature_schema(model_ref.artifact_key)
+            prediction_transform = str(schema.get("prediction_transform", "")).strip()
+
+            return SklearnPredictor.from_bytes(
+                model_version=model_ref.model_version,
+                data=data,
+                prediction_transform=prediction_transform
             )
-            return SklearnPredictor.from_bytes(model_version=model_ref.model_version, data=data)
 
     def get_active_metrics(self) -> dict[str, Any]:
         ref = self._load_latest()

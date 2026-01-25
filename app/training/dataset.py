@@ -4,7 +4,6 @@ from typing import Any
 
 from app.schemas import RealEstateType
 
-
 REQUIRED_FIELDS = [
     "price",
     "realestate_type",
