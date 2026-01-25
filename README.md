@@ -1,21 +1,29 @@
 # Norway Real Estate Price Estimator
 
-Production-like AI / MLOps project for estimating real estate prices in Norway based on historical sales data.
-End-to-end AI system for estimating **current market prices** of residential real estate in Norway.
-The project demonstrates the complete path: data → ML pipeline → model registry → API → Kubernetes → CI/CD.
+**Production-grade AI / MLOps project** for estimating **current market prices** of residential real estate in Norway based on historical transaction data.
+
+The project demonstrates a **full end-to-end AI system**:
+
+> data ingestion → feature engineering → model training → quality gating → model registry → inference API → Kubernetes → CI/CD
+
+This repository is intentionally built as a **realistic production-like system**, not a toy ML notebook.
+
+---
 
 ## 🚀 What this project does
 
-The project demonstrates the complete path: **data → ML pipeline → model registry → API → Kubernetes → CI/CD**.
+- Fetches real real-estate transactions from an external API
+- Builds validated, reproducible training datasets
+- Trains regression models for price estimation
+- Computes rich quality metrics (absolute & relative)
+- Applies **quality gating** before publishing models
+- Stores immutable artifacts in object storage (S3 compatible)
+- Serves predictions via FastAPI
+- Retrains models automatically on a schedule (Kubernetes CronJob)
+- Deploys to Kubernetes via Helm (kind / GKE)
+- Supports full CI/CD via GitHub Actions
 
-* Fetches real real-estate transactions from an external API
-* Builds clean, validated datasets
-* Trains ML models for price estimation
-* Applies quality gating before publishing models
-* Stores artifacts in S3-compatible storage (MinIO / GCS)
-* Serves predictions via FastAPI
-* Retrains models automatically on a schedule in Kubernetes
-* Deploys to GKE via Helm and GitHub Actions
+---
 
 ## 🧱 High-level architecture
 ```mermaid
@@ -56,90 +64,150 @@ flowchart LR
     PREDICT --> FASTAPI
 ```
 
-## 📦 Components
+## 📦 Core components
 
-### 1. Training pipeline
+### 1️⃣ Training pipeline
+Runs as a Kubernetes **CronJob** (and can be executed manually).
 
-* Runs as Kubernetes CronJob
-* Periodically:
-   * fetches data for a given time window
-   * validates and normalizes rows
-   * trains a sklearn model
-   * evaluates metrics
-   * applies gating rules
-   * publishes artifacts if quality is acceptable
+### Pipeline stages
 
-**Artifacts stored:**
-* raw rows (`rows_raw.jsonl`)
-* training dataset (`dataset.parquet`)
-* manifest (`manifest.json`)
-* model (`model.pkl`)
-* registry pointer (`latest.json`)
+- Fetch transactions for a given period
+- Normalize and validate rows
+- Build a reproducible training dataset
+- Train a regression model
+- Evaluate metrics
+- Apply quality gating
+- Publish artifacts if gating passes
 
-### 2. Model Registry
+### Artifacts stored per training run
 
-* Stored in object storage
-* Each model version is immutable
-* `latest.json` points to the currently active model
-* API will not serve predictions until a valid model exists
+- `rows_raw.jsonl` — raw normalized rows
+- `dataset.parquet` — trainable dataset
+- `manifest.json` — dataset statistics & dropped rows
+- `model.pkl` — trained model
+- `metrics.json` — evaluation metrics
+- `feature_schema.json` — schema used for inference
+- `latest.json` — pointer to the active model
 
-### 3. API service (FastAPI)
+---
 
-**Endpoints:**
-* `GET /health` — liveness
-* `GET /ready` — readiness (model loaded)
-* `POST /estimate` — batch price estimation
+### 2️⃣ Model Registry
 
-**Key design decisions:**
-* Batch-first API (`property_id → features`)
-* Strict validation (better no result than a wrong one)
-* Predictor logic isolated from HTTP layer
+- Implemented on top of object storage
+- Each model version is immutable
+- `latest.json` points to the active production model
+- API refuses to serve predictions until a valid model exists
+- Registry is cached in-memory with TTL for performance
 
-### 4. Storage
+---
+
+### 3️⃣ Inference API (FastAPI)
+
+### Endpoints
+
+- `GET /health` — liveness probe
+- `GET /ready` — readiness probe (model loaded)
+- `POST /estimate` — batch price estimation
+- `GET /metrics` — raw model metrics
+- `GET /metrics/summary` — human-friendly quality report
+
+### Design principles
+
+- Batch-first API (property_id → features)
+- Strict validation (“better no estimate than a wrong one”)
+- Predictor logic isolated from HTTP layer
+- Explicit readiness based on model availability
+
+---
+
+### 4️⃣ Storage
 
 * **Local / kind:** MinIO
 * **GKE:** Google Cloud Storage via S3 interoperability
 * Same code works in both environments
 
 > ⚠️ **Note:** boto3 uploads require `ContentLength` to avoid aws-chunked uploads when using GCS S3 compatibility.
+---
 
 ## 🧠 Machine Learning
 
 ### Current approach
 
-* Tabular regression (sklearn)
-* **Features:**
-   * areas (`total_area`, `usable_area`)
-   * location (lat/lon, municipality)
-   * building metadata
-   * real estate type
+- Tabular regression (scikit-learn)
+- Model: `HistGradientBoostingRegressor`
+- Target: `log1p(price)` with inverse transform on inference
+- Sliding window: currently full dataset (rolling window planned)
 
-### Metrics
+### Feature groups
 
-* MAE
-* RMSE
-* Metrics per:
-   * `realestate_type`
-   * top municipalities
+- Property size (`total_area`, `usable_area`)
+- Location (`lat`, `lon`, `municipality`)
+- Building metadata (year built, floor, rooms, bedrooms)
+- Real estate type
+- Derived ratios (e.g. area ratios)
 
-### Gating rules
+---
 
-A new model is published only if:
-* enough training data is available
-* overall quality does not degrade beyond a threshold
-* key segment (`enebolig`) does not regress excessively
 
-**If gating fails** → previous model remains active.
+## 📊 Model Quality & Metrics
+
+### Raw metrics endpoint
+
+**GET `/metrics`**
+
+Returns the exact contents of `metrics.json` stored in the registry.
+
+---
+
+## 🧪 Model Quality Report
+
+**GET `/metrics/summary`**
+
+A human-friendly report designed for quick evaluation by engineers and stakeholders.
+
+### Includes
+
+- Overall metrics (MAE, RMSE, MdAPE, WAPE, AE_p90)
+- Metrics per `realestate_type`
+- Best / worst performing segments
+- Automatic risk flags
+- Tail-risk detection
+- Thresholds used for interpretation
+
+### Example usage
+
+```bash
+curl -s http://localhost:8000/metrics/summary | jq
+```
+This endpoint intentionally reads like a model evaluation report, not a raw ML dump.
+
+---
+
+## 🚦 Quality Gating
+
+A newly trained model is published **only if**:
+- Minimum dataset size is met
+- Overall quality does not degrade beyond configured thresholds
+- Key segment (`enebolig`) does not regress excessively
+- Optional relative error metrics (MdAPE / WAPE) stay within bounds
+
+If gating fails → **previous model remains active**.
+
+This prevents silent production regressions.
+
+---
 
 ## ☸️ Kubernetes & Deployment
 
-* Helm chart (`deploy/helm`)
-* Separate configs for:
-   * `kind` (local)
-   * `GKE`
-* Resources and limits explicitly set
-* Training runs as CronJob
-* API runs as Deployment with readiness checks
+- Helm chart located in `deploy/helm`
+- Environments
+    - `kind` — local development
+    - `GKE` — production-like cluster
+- Explicit CPU / memory requests & limits
+- Training runs as a `CronJob`
+- API runs as a `Deployment` with readiness probes
+
+---
 
 ## 🔄 CI/CD
 
@@ -151,211 +219,148 @@ A new model is published only if:
    * push to GHCR
    * deploy to GKE via Helm
    * update Kubernetes secrets
-3. New version rolls out automatically
+3. Rolling update with readiness checks
 
 ## 🧪 Local development
 
 ### Prerequisites
 
-* Docker
-* Python 3.11+
-* `uv`
-* RabbitMQ (for local async)
-* MinIO (optional)
+- Docker
+- Python 3.11+
+- `uv`
+- `kind`
+- `kubectl`
+- `helm`
+- RabbitMQ
+- MinIO (optional)
 
 ### Run locally
 ```bash
 cp .env.example .env
 uv lock
 make compose-up
-```
-## Useful Links
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **RabbitMQ Management UI** | http://localhost:15672 | `guest` / `guest` |
-| **MinIO Console** | http://localhost:9001 | See `.env` |
-| **MinIO S3 Endpoint** | http://localhost:9000 | - |
-
-### 3) Create stub model
-```bash
-uv run python -m scripts.bootstrap_model_registry
-```
-
-### 4) Start application (FastAPI + Celery worker)
-```bash
 honcho start
 ```
-
 ## Open:
 - [Swagger](http://localhost:8080/docs)
 - [ReDoc](http://localhost:8080/redoc)
 - [Health](http://localhost:8080/health)
 
-## Training (dry-run snapshots)
-Fetch data for a date range, build dataset, and upload snapshots to MinIO:
 
-```bash
-uv run python -m scripts.train --start-date 2026-01-01 --end-date 2026-01-31 --dry-run
-```
-
-## Retraining (scheduled)
-Local dev runs Celery worker + Celery beat via Procfile.
-
-- Monthly retrain runs on the 1st day at 03:05 (Europe/Ljubljana) and trains the previous month, then publishes to MinIO and updates `ree-models/latest.json`.
-
-Manual retrain:
-```bash
-uv run celery -A app.celery_app.celery_app call app.tasks.retrain.retrain_range --args='["2026-01-01","2026-01-31", true]'
-```
-
-# Deploy to kind
-## Prerequisites
-
-- `kubectl`
-- `kind`
-- `helm`
-- `docker`
-- `k9s` (optional)
 ---
-## Create cluster
+
+## 🚢 Deploy to kind
 ```bash
 kind create cluster --name ree
 kubectl cluster-info --context kind-ree
-```
----
-## Build and load image to kind
-```bash
+
 TAG=dev-$(git rev-parse --short HEAD)
 docker build -t ree:$TAG -f deploy/Dockerfile .
 kind load docker-image ree:$TAG --name ree
-```
----
-## Create namespace + secret from .env.kind
-```bash
+
 kubectl create namespace ree 2>/dev/null || true
 kubectl -n ree delete secret ree-secrets --ignore-not-found
 kubectl -n ree create secret generic ree-secrets --from-env-file=.env.kind
-```
----
-## Install with Helm (kind values)
-```bash
+
 helm upgrade --install ree deploy/helm -n ree -f deploy/helm/values_kind.yaml
-```
----
-## Port-forward
-```bash
+
 kubectl -n ree port-forward svc/ree-api 8000:80
 kubectl -n ree port-forward svc/ree-minio 9001:9001
 ```
----
-## Run training once (manual, first time)
+
+### Run initial training manually:
 ```bash
-kubectl -n ree create job --from=cronjob/ree-training ree-training-manual-1
+kubectl -n ree create job --from=cronjob/ree-training ree-training-manual
 ```
----
-## Enable CronJob in kind (optional)
-Set `training.suspend: false` in `values.yaml` and run:
-```bash
-helm upgrade --install ree deploy/helm -n ree -f deploy/helm/values_kind.yaml
-```
----
 ### Note:
 - Use you k8s config, example: `KUBECONFIG=~/.kube/kind-config kubectl`
 
+---
+
 ## 🛣️ Roadmap (next steps)
 
-* Model v2 (better models + relative error metrics)
-* Metrics endpoint (`/metrics`)
-* Monitoring (Prometheus / logs correlation)
-* Drift detection
-* Extended README + design narrative
+- Rolling 12-month training window
+- Incremental dataset updates
+- Model v3 (feature interactions / geo features)
+- Drift detection
+- Prometheus metrics & dashboards
+- Extended architecture narrative
+
+---
+
+# 📊 Model Evaluation Report
+
+## 🧠 Model Overview
+
+- **Model type:** `HistGradientBoostingRegressor` (sklearn)
+- **Model family:** Gradient Boosting (histogram-based)
+- **Version:** `20260125-1612-7e1894a`
+
+### Target transformation
+- **Target:** `log1p`
+- **Prediction inverse transform:** `expm1`
+
+---
+
+## 📦 Dataset
+
+| Split | Records |
+|------|---------|
+| Train | 19,157 |
+| Test  | 4,790  |
+
+---
+
+## 📈 Overall Performance (Test Set)
+
+| Metric | Value |
+|------|------|
+| **MdAPE** | **12.62 %** |
+| **WAPE** | **18.72 %** |
+| **MAE** | 880,501 NOK |
+| **RMSE** | 1,524,772 NOK |
+| **AE P90** | 1,980,151 NOK |
+
+---
+
+## 🏘️ Performance by Real Estate Type
+
+| Segment | Status | MdAPE (%) | WAPE (%) | AE P90 (NOK) |
+|-------|--------|-----------|----------|--------------|
+| **Leilighet** | ✅ Good | **9.80** | 15.36 | 1,678,491 |
+| **Rekkehus** | ✅ Good | 11.42 | 15.39 | 1,563,192 |
+| **Tomannsbolig** | ⚠️ OK | 14.16 | 19.45 | 2,201,099 |
+| **Enebolig** | 🚨 Risk | 20.12 | 25.01 | 2,678,550 |
+| **Hytte** | 🚨 Risk | **27.39** | 31.67 | 2,053,856 |
+
+---
+
+## 🥇 Best & Worst Segments
+
+- **Best segment:** `leilighet` — MdAPE **9.8%**
+- **Worst segment:** `hytte` — MdAPE **27.39%**
+
+---
+
+## 🎯 Quality Thresholds
+
+| Threshold | Value |
+|---------|-------|
+| **MdAPE (Good)** | ≤ 12% |
+| **MdAPE (OK)** | ≤ 18% |
+| **AE P90 Tail Risk** | ≥ 2,000,000 NOK |
+
+---
 
 ## 📝 Notes
 
-### Development Architecture
-In the development environment:
-- ✅ Application code runs **natively on your host** (fast hot-reload)
-- 🐳 RabbitMQ and MinIO run in **Docker containers**
-
-## 🔄 Pipeline results
-
-**Period:** 01.01.2026 - 31.01.2026
-
-📄 `manifest.json`
-```json
-{
-  "period": {
-    "start_date": "2026-01-01",
-    "end_date": "2026-01-31"
-  },
-  "counts": {
-    "turnovers_raw": 6559,
-    "turnovers_normalized": 6179,
-    "cadastral_unit_ids": 6179,
-    "properties_matched": 2900,
-    "rows_raw": 2459,
-    "rows_trainable": 2219
-  },
-  "dropped_reasons": {
-    "invalid:total_area": 191,
-    "invalid:total_area_lt_bra": 49
-  },
-  "dry_run": true
-}
-```
-
-## Sklearn model Evaluation Metrics
-
-### Overall Performance
-
-- **MAE:** 963,341
-- **RMSE:** 1,610,995
-
-> Average absolute prediction error is ~963k.
-> Higher RMSE indicates the presence of large outliers.
+- Worst segment is **`hytte`** (MdAPE 27.39%)
+- Likely causes:
+  - High price heterogeneity
+  - Sparse or noisy data
 
 ---
 
-### MAE by Real Estate Type
+## ⏱️ Metadata
 
-| Type | MAE |
-|------|----:|
-| leilighet | 799,366 |
-| hytte | 928,496 |
-| rekkehus | 970,871 |
-| tomannsbolig | 1,115,249 |
-| enebolig | 1,438,171 |
-
----
-
-### MAE by Municipality (Top)
-
-| Municipality | MAE |
-|-------------:|----:|
-| 3205 | 448,371 |
-| 3107 | 751,234 |
-| 4204 | 821,650 |
-| 1508 | 918,516 |
-| 5001 | 937,269 |
-| 4601 | 984,198 |
-| 3301 | 966,644 |
-| 3201 | 1,065,213 |
-| 1108 | 1,306,385 |
-| 301 | 1,432,622 |
-
----
-
-### Dataset Size
-
-- **Train:** 1,783 samples
-- **Test:** 446 samples
-
----
-
-### Notes
-
-- Best performance on apartments (*leilighet*)
-- Higher errors for detached houses (*enebolig*)
-- Error varies significantly across municipalities
-- Dataset size is relatively small, contributing to higher variance
+- **Generated at:** `2026-01-25T17:47:06Z`

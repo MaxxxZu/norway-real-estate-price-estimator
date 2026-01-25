@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 
 from app.api.examples import ESTIMATE_REQUEST_EXAMPLES
+from app.api.routes.metrics import router as metrics_router
 from app.config import settings
 from app.ml.base import Predictor
 from app.ml.registry import ModelNotReadyError, ModelRegistry
@@ -11,6 +12,7 @@ from app.services.estimate_service import estimate_batch
 from app.storage.s3 import S3Storage
 
 router = APIRouter()
+router.include_router(metrics_router)
 
 _storage = S3Storage()
 _registry = ModelRegistry(_storage, refresh_seconds=settings.model_registry_refresh_seconds)
@@ -76,14 +78,3 @@ def estimate(
 def get_ready() -> dict[str, str]:
     _ = get_predictor()
     return {"status": "ready"}
-
-
-@router.get("/metrics", tags=["monitoring"], summary="Get last model metrics")
-def get_rmetrics() -> Any:
-    try:
-        return _registry.get_active_metrics()
-    except ModelNotReadyError as e:
-        raise HTTPException(
-            status_code=503,
-            detail={"message": "model_not_ready", "reason": str(e)},
-        )

@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     gate_overall_wape_max_degrade_pct: float = Field(default=0.10)
     gate_enebolig_wape_max_degrade_pct: float = Field(default=0.12)
 
+    # Metrics summary thresholds (UI/Report)
+    metrics_mdape_good_threshold: float = Field(default=0.12)
+    metrics_mdape_ok_threshold: float = Field(default=0.18)
+    metrics_ae_p90_tail_risk_nok: int = Field(default=2_000_000)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="REE_",
