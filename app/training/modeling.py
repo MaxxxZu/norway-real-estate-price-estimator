@@ -4,12 +4,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import HistGradientBoostingRegressor
-from sklearn.impute import SimpleImputer
+from catboost import CatBoostRegressor, Pool
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
 
 from app.training.metrics import compute_metrics
 
@@ -17,6 +13,7 @@ CATEGORICAL_COLS: list[str] = [
     "realestate_type",
     "municipality_number",
 ]
+
 NUMERIC_COLS = [
     "lat",
     "lon",
@@ -29,6 +26,15 @@ NUMERIC_COLS = [
     "rooms",
     "area_ratio",
 ]
+
+DERIVED_COLS = [
+    "area_ratio",
+    "building_age",
+]
+
+TARGET_TRANSFORM = "log1p"
+PREDICTION_TRANSFORM = "expm1"
+MODEL_FAMILY = "CatBoostRegressor"
 
 
 @dataclass(frozen=True)
@@ -66,57 +72,39 @@ def train_and_evaluate(rows: list[dict[str, Any]]) -> TrainResult:
     df = pd.DataFrame(rows)
     df = _add_derived_features(df)
 
-    y = df["price"].astype(float)
+    df = df[pd.to_numeric(df["price"], errors="coerce") > 0].copy()
+
+    y = pd.to_numeric(df["price"], errors="coerce").astype(float)
     y_log = np.log1p(y)
 
     X = df[CATEGORICAL_COLS + NUMERIC_COLS].copy()
+    for c in CATEGORICAL_COLS:
+        X[c] = X[c].astype(str)
 
     X_train, X_test, y_train_log, y_test_log = train_test_split(
-        X, y_log, test_size=0.2, random_state=42
+        X, y_log, test_size=0.2, random_state=42, stratify=X["realestate_type"]
     )
+    cat_features = [X.columns.get_loc(c) for c in CATEGORICAL_COLS]
+    train_pool = Pool(X_train, y_train_log, cat_features=cat_features)
+    test_pool = Pool(X_test, y_test_log, cat_features=cat_features)
 
-    numeric_transformer = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="median")),
-        ]
-    )
-
-    categorical_transformer = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="most_frequent")),
-            ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
-        ]
-    )
-
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("cat", categorical_transformer, CATEGORICAL_COLS),
-            ("num", numeric_transformer, NUMERIC_COLS),
-        ],
-        sparse_threshold=0.0,
-    )
-
-    model = HistGradientBoostingRegressor(
-        random_state=42,
+    model = CatBoostRegressor(
+        loss_function="RMSE",
         learning_rate=0.05,
-        max_iter=600,
-        max_depth=8,
-        min_samples_leaf=20,
+        depth=8,
+        iterations=5000,
+        random_seed=42,
+        eval_metric="RMSE",
+        od_type="Iter",
+        od_wait=200,
+        verbose=False,
     )
 
-    pipeline = Pipeline(
-        steps=[
-            ("preprocess", preprocessor),
-            ("model", model),
-        ]
-    )
+    model.fit(train_pool, eval_set=test_pool, use_best_model=True)
 
-    pipeline.fit(X_train, y_train_log)
-
-    y_pred_log = pipeline.predict(X_test)
-
+    y_pred_log = model.predict(X_test)
     y_true = np.expm1(y_test_log.to_numpy(dtype=float))
-    y_pred = np.expm1(y_pred_log.astype(float))
+    y_pred = np.expm1(np.array(y_pred_log, dtype=float))
 
     eval_df = X_test.copy()
     eval_df["y_true"] = y_true
@@ -131,18 +119,18 @@ def train_and_evaluate(rows: list[dict[str, Any]]) -> TrainResult:
         "by_realestate_type": by_type,
         "n_train": int(len(X_train)),
         "n_test": int(len(X_test)),
-        "target_transform": "log1p",
-        "prediction_transform": "expm1",
-        "model_family": "HistGradientBoostingRegressor",
+        "target_transform": TARGET_TRANSFORM,
+        "prediction_transform": PREDICTION_TRANSFORM,
+        "model_family": MODEL_FAMILY,
     }
 
     feature_schema = {
         "categorical": CATEGORICAL_COLS,
         "numeric": NUMERIC_COLS,
-        "derived": ["area_ratio", "building_age"],
+        "derived": DERIVED_COLS,
         "label": "price",
-        "target_transform": "log1p",
-        "prediction_transform": "expm1",
+        "target_transform": TARGET_TRANSFORM,
+        "prediction_transform": PREDICTION_TRANSFORM,
     }
 
-    return TrainResult(pipeline=pipeline, metrics=metrics, feature_schema=feature_schema)
+    return TrainResult(pipeline=model, metrics=metrics, feature_schema=feature_schema)
