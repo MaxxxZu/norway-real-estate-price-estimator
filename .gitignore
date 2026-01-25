@@ -23,3 +23,6 @@ build/
 # Celery stuff
 *.db
 celerybeat.pid
+
+
+catboost_info/

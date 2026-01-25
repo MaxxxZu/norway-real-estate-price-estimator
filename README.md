@@ -330,9 +330,8 @@ This project is intentionally built as a production-like system, not just a note
 
 ## 🧠 Model Overview
 
-- **Model type:** `HistGradientBoostingRegressor` (sklearn)
-- **Model family:** Gradient Boosting (histogram-based)
-- **Version:** `20260125-1612-7e1894a`
+- **Model type:** `CatBoostRegressor` (CatBoost)
+- **Version:** `20260125-2029-9ca500b`
 
 ### Target transformation
 - **Target:** `log1p`
@@ -353,11 +352,11 @@ This project is intentionally built as a production-like system, not just a note
 
 | Metric | Value |
 |------|------|
-| **MdAPE** | **12.62 %** |
-| **WAPE** | **18.72 %** |
-| **MAE** | 880,501 NOK |
-| **RMSE** | 1,524,772 NOK |
-| **AE P90** | 1,980,151 NOK |
+| MdAPE | **11.64 %** |
+| WAPE | 17.14 % |
+| MAE | 800 166 NOK |
+| RMSE | 1 428 602 NOK |
+| AE P90 | 1 835 471 NOK |
 
 ---
 
@@ -365,18 +364,18 @@ This project is intentionally built as a production-like system, not just a note
 
 | Segment | Status | MdAPE (%) | WAPE (%) | AE P90 (NOK) |
 |-------|--------|-----------|----------|--------------|
-| **Leilighet** | ✅ Good | **9.80** | 15.36 | 1,678,491 |
-| **Rekkehus** | ✅ Good | 11.42 | 15.39 | 1,563,192 |
-| **Tomannsbolig** | ⚠️ OK | 14.16 | 19.45 | 2,201,099 |
-| **Enebolig** | 🚨 Risk | 20.12 | 25.01 | 2,678,550 |
-| **Hytte** | 🚨 Risk | **27.39** | 31.67 | 2,053,856 |
+| **Leilighet** | ✅ Good | **8.97 %** | 13.83 % | 1 543 767 |
+| **Rekkehus** | ✅ Good | 10.35 % | 14.48 % | 1 489 330 |
+| **Tomannsbolig** | ⚠️ OK | 13.23 % | 17.06 % | 1 662 487 |
+| **Enebolig** | ⚠️ OK | 17.98 % | 23.28 % | 2 561 397 |
+| **Hytte** | 🚨 Risk | **24.95 %** | 32.14 % | 1 953 981 |
 
 ---
 
 ## 🥇 Best & Worst Segments
 
-- **Best segment:** `leilighet` — MdAPE **9.8%**
-- **Worst segment:** `hytte` — MdAPE **27.39%**
+- **Best segment:** `leilighet` — MdAPE **8.97%**
+- **Worst segment:** `hytte` — MdAPE **24.95%**
 
 ---
 
@@ -392,7 +391,7 @@ This project is intentionally built as a production-like system, not just a note
 
 ## 📝 Notes
 
-- Worst segment is **`hytte`** (MdAPE 27.39%)
+- Worst segment is **`hytte`** (MdAPE 24.95%)
 - Likely causes:
   - High price heterogeneity
   - Sparse or noisy data
@@ -401,4 +400,4 @@ This project is intentionally built as a production-like system, not just a note
 
 ## ⏱️ Metadata
 
-- **Generated at:** `2026-01-25T17:47:06Z`
+- **Generated at:** `2026-01-25T20:31:53Z`

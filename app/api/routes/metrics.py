@@ -5,8 +5,8 @@ from fastapi import APIRouter, HTTPException
 from app.config import settings
 from app.ml.metrics_summary import build_metrics_summary
 from app.ml.registry import ModelNotReadyError, ModelRegistry
-from app.storage.s3 import S3Storage
 from app.observability.prometheus import prometheus_response
+from app.storage.s3 import S3Storage
 
 router = APIRouter(prefix="/metrics", tags=["monitoring"])
 

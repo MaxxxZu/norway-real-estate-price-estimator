@@ -2,7 +2,7 @@ from app.training.modeling import train_and_evaluate
 
 
 def test_train_and_evaluate_smoke():
-    rows = [
+    data = [
         {
             "price": 3_000_000,
             "realestate_type": "enebolig",
@@ -69,6 +69,8 @@ def test_train_and_evaluate_smoke():
             "rooms": 2,
         },
     ]
+
+    rows = data * 20
 
     res = train_and_evaluate(rows)
     assert "overall" in res.metrics
