@@ -85,20 +85,31 @@ class ModelRegistry:
             raise ModelNotReadyError(f"Unsupported model type: {model_ref.model_type}")
 
         if model_ref.model_type == "stub":
-            artifact = self._storage.get_json(
-                bucket=settings.s3_bucket_models,
-                key=model_ref.artifact_key
-            )
+            try:
+                artifact = self._storage.get_json(
+                    bucket=settings.s3_bucket_models,
+                    key=model_ref.artifact_key
+                )
+            except S3StorageError as e:
+                raise ModelNotReadyError(
+                    f"Failed to load stub artifact: {model_ref.artifact_key}"
+                ) from e
             return StubPredictor.from_artifact(
                 model_version=model_ref.model_version,
                 artifact=artifact
             )
 
         if model_ref.model_type == "sklearn":
-            data = self._storage.get_bytes(
-                bucket=settings.s3_bucket_models,
-                key=model_ref.artifact_key
-            )
+            try:
+                data = self._storage.get_bytes(
+                    bucket=settings.s3_bucket_models,
+                    key=model_ref.artifact_key,
+                )
+            except S3StorageError as e:
+                raise ModelNotReadyError(
+                    f"Failed to load model artifact: {model_ref.artifact_key}"
+                ) from e
+
             schema = self._load_feature_schema(model_ref.artifact_key)
             prediction_transform = str(schema.get("prediction_transform", "")).strip()
 
