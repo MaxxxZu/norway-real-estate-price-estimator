@@ -5,7 +5,7 @@ FROM python:3.11-slim-bookworm AS base
 
 RUN apt-get update \
  && apt-get -y upgrade --no-install-recommends \
- && apt-get install -y --no-install-recommends ca-certificates \
+ && apt-get install -y --no-install-recommends ca-certificates libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=uv /uv /bin/uv
