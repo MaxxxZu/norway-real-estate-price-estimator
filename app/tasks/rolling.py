@@ -2,8 +2,9 @@ from datetime import date
 from io import BytesIO
 
 import joblib
-from celery import chord, shared_task
+from celery import chord
 
+from app.celery_app import TrainingLongTask, TrainingShortTask, TrainingTask, celery_app
 from app.clients.api_client import ApiClient
 from app.config import settings
 from app.storage.s3 import S3Storage
@@ -20,7 +21,11 @@ from app.training.snapshots import RawSnapshotPaths, load_trainable_rows_from_pa
 from app.training.versioning import make_model_version
 
 
-@shared_task(name="app.tasks.rolling.fetch_month_snapshot", queue="training")
+@celery_app.task(
+    name="app.tasks.rolling.fetch_month_snapshot",
+    queue="training",
+    base=TrainingTask,
+)
 def fetch_month_snapshot(start_date: str, end_date: str, force_fetch: bool = False) -> dict:
     storage = S3Storage()
     api_client = ApiClient()
@@ -41,7 +46,11 @@ def fetch_month_snapshot(start_date: str, end_date: str, force_fetch: bool = Fal
     }
 
 
-@shared_task(name="app.tasks.rolling.merge_rolling_12m", queue="training")
+@celery_app.task(
+    name="app.tasks.rolling.merge_rolling_12m",
+    queue="training",
+    base=TrainingShortTask,
+)
 def merge_rolling_12m(month_results: list[dict], as_of: str, months: int = 12) -> dict:
     storage = S3Storage()
     month_snapshots = [
@@ -72,7 +81,12 @@ def merge_rolling_12m(month_results: list[dict], as_of: str, months: int = 12) -
     return result
 
 
-@shared_task(name="app.tasks.rolling.train_rolling_12m", queue="training")
+@celery_app.task(
+    name="app.tasks.rolling.train_rolling_12m",
+    queue="training",
+    base=TrainingLongTask,
+    retry_kwargs={"max_retries": 2},
+)
 def train_rolling_12m(ctx: dict, train: bool = True) -> dict:
     if not train:
         ctx["train"] = {"skipped": True}
@@ -100,7 +114,11 @@ def train_rolling_12m(ctx: dict, train: bool = True) -> dict:
     return ctx
 
 
-@shared_task(name="app.tasks.rolling.gate_rolling_12m", queue="training")
+@celery_app.task(
+    name="app.tasks.rolling.gate_rolling_12m",
+    queue="training",
+    base=TrainingShortTask,
+)
 def gate_rolling_12m(ctx: dict) -> dict:
     storage = S3Storage()
     manifest = ctx.get("manifest") or {}
@@ -121,7 +139,11 @@ def gate_rolling_12m(ctx: dict) -> dict:
     return ctx
 
 
-@shared_task(name="app.tasks.rolling.publish_rolling_12m", queue="training")
+@celery_app.task(
+    name="app.tasks.rolling.publish_rolling_12m",
+    queue="training",
+    base=TrainingTask,
+)
 def publish_rolling_12m(ctx: dict, publish: bool = True) -> dict:
     if not publish:
         ctx["published"] = {"skipped": True}
@@ -193,7 +215,7 @@ def publish_rolling_12m(ctx: dict, publish: bool = True) -> dict:
     return ctx
 
 
-@shared_task(name="app.tasks.rolling.trigger_rolling_12m", queue="training")
+@celery_app.task(name="app.tasks.rolling.trigger_rolling_12m", queue="training", base=TrainingTask)
 def trigger_rolling_12m(
     as_of: str | None = None,
     force_fetch: bool = False,
