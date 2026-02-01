@@ -28,12 +28,8 @@ def test_get_predictor_refreshes_cache(mock_storage):
     """Test that predictor is refreshed when cache expires."""
     registry = ModelRegistry(mock_storage, refresh_seconds=60)
     mock_storage.get_json.side_effect = [
-        {
-            "model_version": "v1",
-            "type": "stub",
-            "artifact_key": "models/v1/artifact.json"
-        },
-        {"params": {}}
+        {"model_version": "v1", "type": "stub", "artifact_key": "models/v1/artifact.json"},
+        {"params": {}},
     ]
 
     predictor = registry.get_predictor()
@@ -67,7 +63,7 @@ def test_build_predictor_unsupported_type(mock_storage):
     mock_storage.get_json.return_value = {
         "model_version": "v1",
         "type": "tensorflow",
-        "artifact_key": "key"
+        "artifact_key": "key",
     }
 
     with pytest.raises(ModelNotReadyError, match="Unsupported model type"):
@@ -79,12 +75,8 @@ def test_build_predictor_sklearn(mock_storage):
     registry = ModelRegistry(mock_storage)
     mock_storage.get_json.side_effect = [
         # latest.json
-        {
-            "model_version": "v2",
-            "type": "sklearn",
-            "artifact_key": "models/v2/model.joblib"
-        },
-        {"prediction_transform": "log1p"}
+        {"model_version": "v2", "type": "sklearn", "artifact_key": "models/v2/model.joblib"},
+        {"prediction_transform": "log1p"},
     ]
     mock_storage.get_bytes.return_value = b"fake-joblib-data"
 

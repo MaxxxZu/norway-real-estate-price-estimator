@@ -1,5 +1,10 @@
 # Norway Real Estate Price Estimator
 
+[![Test](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/ci.yml/badge.svg)](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/ci.yml)
+[![Release](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/docker-build.yml/badge.svg)](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/docker-build.yml)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 **Production-grade AI / MLOps project** for estimating **current market prices** of residential real estate in Norway based on historical transaction data.
 
 The project demonstrates a **full end-to-end AI system**:

@@ -5,7 +5,8 @@ def test_gate_passes_without_previous_metrics():
     decision = evaluate_publish_gate(
         rows_trainable=1000,
         new_metrics={
-            "overall": {"mdape": 100.0}, "by_realestate_type": {"enebolig": {"mdape": 200.0}}
+            "overall": {"mdape": 100.0},
+            "by_realestate_type": {"enebolig": {"mdape": 200.0}},
         },
         prev_metrics=None,
     )
@@ -16,7 +17,8 @@ def test_gate_blocks_on_min_rows():
     decision = evaluate_publish_gate(
         rows_trainable=10,
         new_metrics={
-            "overall": {"mdape": 100.0}, "by_realestate_type": {"enebolig": {"mdape": 200.0}}
+            "overall": {"mdape": 100.0},
+            "by_realestate_type": {"enebolig": {"mdape": 200.0}},
         },
         prev_metrics=None,
     )

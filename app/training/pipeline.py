@@ -37,7 +37,7 @@ class Pipeline:
         dry_run: bool = False,
         train: bool = True,
         publish: bool = True,
-        force_fetch: bool = False
+        force_fetch: bool = False,
     ):
         self.start_date = start_date
         self.end_date = end_date
@@ -109,7 +109,7 @@ class Pipeline:
         self.manifest = {
             "period": {
                 "start_date": self.start_date.isoformat(),
-                "end_date": self.end_date.isoformat()
+                "end_date": self.end_date.isoformat(),
             },
             "counts": {
                 "turnovers_raw": len(turnovers_raw),

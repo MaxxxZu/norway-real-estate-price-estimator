@@ -1,6 +1,6 @@
 from datetime import date
 from io import BytesIO
-from typing import Any, Optional
+from typing import Any
 
 import joblib
 import numpy as np
@@ -15,7 +15,7 @@ class SklearnPredictor(Predictor):
         self,
         model_version: str,
         pipeline: Any,
-        prediction_transform: Optional[str] = None,
+        prediction_transform: str | None = None,
     ):
         self.model_version = model_version
         self._pipeline = pipeline
@@ -26,13 +26,13 @@ class SklearnPredictor(Predictor):
         cls,
         model_version: str,
         data: bytes,
-        prediction_transform: Optional[str] = None,
+        prediction_transform: str | None = None,
     ) -> "SklearnPredictor":
         pipeline = joblib.load(BytesIO(data))
         return cls(
             model_version=model_version,
             pipeline=pipeline,
-            prediction_transform=prediction_transform
+            prediction_transform=prediction_transform,
         )
 
     def predict_one(self, features: EstimationFeatures) -> int:

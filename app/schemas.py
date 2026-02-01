@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -25,6 +24,7 @@ class EstimationFeatures(BaseModel):
 
     We prefer to return 422 rather than producing a misleading estimate.
     """
+
     model_config = ConfigDict(extra="ignore")
 
     realestate_type: RealEstateType = Field(...)
@@ -38,13 +38,13 @@ class EstimationFeatures(BaseModel):
     total_area: float = Field(..., gt=0)
     bra: float = Field(..., gt=0)
 
-    floor: Optional[int] = None
-    bedrooms: Optional[int] = Field(default=None, ge=0)
-    rooms: Optional[int] = Field(default=None, ge=0)
+    floor: int | None = None
+    bedrooms: int | None = Field(default=None, ge=0)
+    rooms: int | None = Field(default=None, ge=0)
 
-    gnr_number: Optional[int] = None
-    bnr_number: Optional[int] = None
-    snr_number: Optional[int] = None
+    gnr_number: int | None = None
+    bnr_number: int | None = None
+    snr_number: int | None = None
 
     @property
     def usable_area(self) -> float:
@@ -61,7 +61,7 @@ class EstimationFeatures(BaseModel):
         return self
 
 
-EstimateRequest = Dict[str, EstimationFeatures]
+EstimateRequest = dict[str, EstimationFeatures]
 
 
 class EstimateResult(BaseModel):
@@ -73,7 +73,7 @@ class EstimateResult(BaseModel):
 
 class ValidationErrorResponse(BaseModel):
     message: str = "validation_failed"
-    errors: Dict[str, list[str]]
+    errors: dict[str, list[str]]
 
 
-EstimateResponse = Dict[str, EstimateResult]
+EstimateResponse = dict[str, EstimateResult]

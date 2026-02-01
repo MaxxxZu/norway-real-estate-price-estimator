@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from app.config import settings
 
@@ -11,7 +11,7 @@ class GateResult:
     details: dict[str, Any]
 
 
-def _get_metric(metrics: dict[str, Any], path: list[str]) -> Optional[float]:
+def _get_metric(metrics: dict[str, Any], path: list[str]) -> float | None:
     cur: Any = metrics
     for key in path:
         if not isinstance(cur, dict) or key not in cur:
@@ -32,8 +32,8 @@ def _pct_change(new: float, prev: float) -> float:
 def _check_degradation(
     *,
     name: str,
-    new_val: Optional[float],
-    prev_val: Optional[float],
+    new_val: float | None,
+    prev_val: float | None,
     max_degrade_pct: float,
     reasons: list[str],
     checks: dict[str, Any],
@@ -61,7 +61,7 @@ def evaluate_publish_gate(
     *,
     rows_trainable: int,
     new_metrics: dict[str, Any],
-    prev_metrics: Optional[dict[str, Any]],
+    prev_metrics: dict[str, Any] | None,
 ) -> GateResult:
     reasons: list[str] = []
     details: dict[str, Any] = {

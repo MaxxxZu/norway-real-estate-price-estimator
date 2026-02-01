@@ -92,7 +92,7 @@ def test_get_json_invalid(mock_boto_client):
     """Test invalid JSON raises error."""
     mock_s3 = mock_boto_client.return_value
     mock_body = MagicMock()
-    mock_body.read.return_value = b'invalid-json'
+    mock_body.read.return_value = b"invalid-json"
     mock_s3.get_object.return_value = {"Body": mock_body}
 
     storage = S3Storage()

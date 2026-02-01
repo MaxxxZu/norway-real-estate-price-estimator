@@ -23,8 +23,7 @@ def get_predictor() -> Predictor:
         return _registry.get_predictor()
     except ModelNotReadyError as e:
         raise HTTPException(
-            status_code=503,
-            detail={"message": "model_not_ready", "reason": str(e)}
+            status_code=503, detail={"message": "model_not_ready", "reason": str(e)}
         )
 
 
@@ -50,9 +49,7 @@ async def get_health() -> HealthCheckResponse:
     tags=["estimation"],
 )
 def estimate(
-    payload: dict[str, dict[str, Any]] = Body(
-        ..., openapi_examples=ESTIMATE_REQUEST_EXAMPLES
-    ),
+    payload: dict[str, dict[str, Any]] = Body(..., openapi_examples=ESTIMATE_REQUEST_EXAMPLES),
     predictor: Predictor = Depends(get_predictor),
 ) -> Any:
     if not payload:
@@ -61,8 +58,7 @@ def estimate(
     results, errors = estimate_batch(payload, predictor=predictor)
     if errors:
         raise HTTPException(
-            status_code=422,
-            detail={"message": "validation_failed", "errors": errors}
+            status_code=422, detail={"message": "validation_failed", "errors": errors}
         )
 
     return results

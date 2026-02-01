@@ -13,27 +13,27 @@ def _parse_date(value: str) -> date:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Training pipeline: fetch -> dataset -> train -> publish"
-                    "(default uses latest snapshot)"
+        "(default uses latest snapshot)"
     )
     parser.add_argument(
         "--start-date",
         type=_parse_date,
         default=None,
         help=f"Start date in format {DATE_FORMAT} (example: 2025-01-01). "
-             "Required only with --force-fetch.",
+        "Required only with --force-fetch.",
     )
     parser.add_argument(
         "--end-date",
         type=_parse_date,
         default=None,
         help=f"End date in format {DATE_FORMAT} (example: 2025-12-31). "
-             "Required only with --force-fetch.",
+        "Required only with --force-fetch.",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Only snapshot (no training/publish). If no --force-fetch, will "
-             "only validate that latest snapshot exists.",
+        "only validate that latest snapshot exists.",
     )
     parser.add_argument(
         "--train",
@@ -50,7 +50,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force-fetch",
         action="store_true",
         help="Fetch from external API for the given dates, build snapshot "
-             "and update snapshots/latest.json.",
+        "and update snapshots/latest.json.",
     )
 
     return parser
