@@ -99,9 +99,9 @@ jobs:
             -f deploy/helm/values_gke.yaml \
             --set image.repository=${{ needs.build.outputs.image_repo }} \
             --set image.tag=${{ needs.build.outputs.image_tag }} \
-            --set rabbitmq.auth.password='${{ secrets.RABBITMQ_PASSWORD }}' \
-            --set rabbitmq.auth.erlangCookie='${{ secrets.RABBITMQ_ERLANG_COOKIE }}' \
-            --set redis.auth.password='${{ secrets.REDIS_PASSWORD }}'
+            --set rabbitmq.auth.password='${{ secrets.REE_RABBITMQ_PASSWORD }}' \
+            --set rabbitmq.auth.erlangCookie='${{ secrets.REE_RABBITMQ_ERLANG_COOKIE }}' \
+            --set redis.auth.password='${{ secrets.REE_REDIS_PASSWORD }}'
 
       - name: Rollout status
         run: |
