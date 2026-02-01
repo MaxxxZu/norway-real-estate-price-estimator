@@ -36,6 +36,11 @@ spec:
             - name: REE_CELERY_BROKER_URL
               value: "amqp://{{ .Values.rabbitmq.auth.username }}:{{ .Values.rabbitmq.auth.password }}@{{ default (printf \"%s-rabbitmq\" .Release.Name) .Values.rabbitmq.fullnameOverride }}:5672//"
           {{- end }}
+          {{- if .Values.redis.enabled }}
+          env:
+            - name: REE_CELERY_RESULT_BACKEND
+              value: "redis://:{{ .Values.redis.auth.password }}@{{ default (printf \"%s-redis-master\" .Release.Name) .Values.redis.fullnameOverride }}:6379/0"
+          {{- end }}
           resources:
             {{- toYaml .Values.resources.training | nindent 12 }}
 {{- end }}

@@ -79,5 +79,12 @@ rabbitmq:
   fullnameOverride: ""
   auth:
     username: guest
-    password: guest
-    erlangCookie: "ree-cookie"
+    password: ""
+    erlangCookie: ""
+
+redis:
+  enabled: false
+  fullnameOverride: ""
+  auth:
+    enabled: true
+    password: ""
