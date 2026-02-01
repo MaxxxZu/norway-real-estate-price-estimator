@@ -7,6 +7,7 @@ from celery import chord
 from app.celery_app import TrainingLongTask, TrainingShortTask, TrainingTask, celery_app
 from app.clients.api_client import ApiClient
 from app.config import settings
+from app.observability.logging import log
 from app.storage.s3 import S3Storage
 from app.training.fetch import FetchConfig
 from app.training.gating import evaluate_publish_gate
@@ -165,10 +166,6 @@ def publish_rolling_12m(ctx: dict, publish: bool = True) -> dict:
 
     storage = S3Storage()
     pipeline_bytes = storage.get_bytes(bucket=settings.s3_bucket_snapshots, key=tmp_model_key)
-    try:
-        storage.delete(bucket=settings.s3_bucket_snapshots, key=tmp_model_key)
-    except Exception:
-        pass
 
     model_version = make_model_version()
     manifest = ctx.get("manifest") or {}
@@ -182,14 +179,20 @@ def publish_rolling_12m(ctx: dict, publish: bool = True) -> dict:
         "gating": gating,
     }
 
-    keys = upload_model_artifacts_from_bytes(
-        storage=storage,
-        model_version=model_version,
-        pipeline_bytes=pipeline_bytes,
-        metrics=train.get("metrics") or {},
-        feature_schema=train.get("feature_schema") or {},
-        training_manifest=training_manifest,
-    )
+    try:
+        keys = upload_model_artifacts_from_bytes(
+            storage=storage,
+            model_version=model_version,
+            pipeline_bytes=pipeline_bytes,
+            metrics=train.get("metrics") or {},
+            feature_schema=train.get("feature_schema") or {},
+            training_manifest=training_manifest,
+        )
+    finally:
+        try:
+            storage.delete(bucket=settings.s3_bucket_snapshots, key=tmp_model_key)
+        except Exception as e:
+            log().warning("temp_model_delete_failed", key=tmp_model_key, error=str(e))
 
     published = False
     latest_updated = False

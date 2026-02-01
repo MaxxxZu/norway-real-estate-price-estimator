@@ -28,6 +28,7 @@ class TrainingShortTask(TrainingTask):
     soft_time_limit = 120
     time_limit = 240
 
+
 celery_app.conf.update(
     timezone=settings.celery_timezone,
     enable_utc=True,
