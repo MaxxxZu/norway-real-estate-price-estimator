@@ -6,6 +6,7 @@ from prometheus_client import (
     CONTENT_TYPE_LATEST,
     CollectorRegistry,
     Counter,
+    Gauge,
     Histogram,
     generate_latest,
 )
@@ -39,6 +40,28 @@ PREDICTION_LATENCY = Histogram(
     "Time spent in model prediction logic",
     registry=REGISTRY,
     buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0),
+)
+
+TRAINING_STEP_DURATION_SECONDS = Histogram(
+    "training_step_duration_seconds",
+    "Duration of training steps in seconds",
+    ["step"],
+    registry=REGISTRY,
+    buckets=(0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1200, 2400),
+)
+
+ROLLING_SNAPSHOT_ROWS = Gauge(
+    "rolling_snapshot_rows",
+    "Row counts for rolling snapshots",
+    ["metric"],
+    registry=REGISTRY,
+)
+
+TRAINING_GATING_REASONS_TOTAL = Counter(
+    "training_gating_reasons_total",
+    "Number of gating results by reason",
+    ["reason", "status"],
+    registry=REGISTRY,
 )
 
 
