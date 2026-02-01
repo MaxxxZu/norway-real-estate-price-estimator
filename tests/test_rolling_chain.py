@@ -22,6 +22,17 @@ class FakeStorage:
             if line:
                 yield line
 
+    def exists(self, bucket: str, key: str) -> bool:
+        return False
+
+
+class ExistingStorage(FakeStorage):
+    def exists(self, bucket: str, key: str) -> bool:
+        return True
+
+    def get_json(self, bucket: str, key: str) -> dict:
+        return {"period": {"start_date": "2025-01-01", "end_date": "2025-02-28"}}
+
 
 def _jsonl(rows: list[dict]) -> bytes:
     return ("\n".join(json.dumps(r) for r in rows) + "\n").encode("utf-8")
@@ -131,3 +142,22 @@ def test_build_rolling_snapshot_manifest(monkeypatch):
     assert manifest["counts"]["rows_raw_deduped"] == 3
     assert len(manifest["source_months"]) == 2
     assert captured["manifest"] == manifest
+
+
+def test_build_rolling_snapshot_idempotent(monkeypatch):
+    storage = ExistingStorage({})
+
+    def fake_load_manifest(storage, manifest_key: str) -> dict:
+        return {"period": {"start_date": "2025-01-01", "end_date": "2025-02-28"}}
+
+    monkeypatch.setattr("app.training.rolling.load_manifest", fake_load_manifest)
+
+    paths, manifest = build_rolling_snapshot(
+        storage=storage,
+        month_snapshots=[],
+        as_of=date(2025, 3, 1),
+        months=2,
+    )
+
+    assert paths.prefix.endswith("snapshots/rolling_12m/2025-01-01_2025-02-28")
+    assert manifest["period"]["start_date"] == "2025-01-01"

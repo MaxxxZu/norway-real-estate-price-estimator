@@ -17,8 +17,11 @@ from app.training.snapshots import (
     RawSnapshotPaths,
     SnapshotPaths,
     iter_jsonl_rows,
+    load_manifest,
     raw_snapshot_exists,
     raw_snapshot_paths,
+    snapshot_exists,
+    snapshot_paths_for_prefix,
     upload_raw_snapshot,
     upload_snapshots_with_prefix,
 )
@@ -137,6 +140,10 @@ def build_rolling_snapshot(
         f"{(as_of.replace(day=1) - timedelta(days=1)).isoformat()}"
     )
     prefix = f"snapshots/rolling_12m/{window_id}"
+    existing_paths = snapshot_paths_for_prefix(prefix)
+    if snapshot_exists(storage, existing_paths):
+        manifest = load_manifest(storage, existing_paths.manifest_key)
+        return existing_paths, manifest
 
     rows_raw_total = 0
     latest: dict[int, dict[str, Any]] = {}
