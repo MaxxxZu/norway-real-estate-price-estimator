@@ -19,12 +19,12 @@ This repository is intentionally built as a **realistic production-like system**
 
 - Fetches real real-estate transactions from an external API
 - Builds validated, reproducible training datasets
-- Trains regression models for price estimation
+- Trains ML models for price estimation
 - Computes rich quality metrics (absolute & relative)
 - Applies **quality gating** before publishing models
 - Stores immutable artifacts in object storage (S3 compatible)
 - Serves predictions via FastAPI
-- Retrains models automatically on a schedule (Kubernetes CronJob)
+- Retrains models automatically on a schedule (Kubernetes CronJob, rolling 12-month window)
 - Deploys to Kubernetes via Helm (kind / GKE)
 - Supports full CI/CD via GitHub Actions
 
@@ -38,12 +38,13 @@ flowchart LR
     end
 
     subgraph Training["Training (Kubernetes CronJob)"]
-        FETCH[Fetch + Normalize]
+        FETCH[Fetch monthly data]
+        MERGE[Merge & deduplicate<br/>rolling 12m]
         DATASET[Dataset + Manifest]
         TRAIN[Train Model]
         EVAL[Compute metrics]
         GATE[Quality gating]
-        PUBLISH[Publish artifacts + update latest.json]
+        PUBLISH[Publish model]
     end
 
     subgraph Storage["Object Storage (S3 compatible)"]
@@ -60,14 +61,20 @@ flowchart LR
         PRED[SklearnPredictor]
     end
 
-    EXT_API --> FETCH --> DATASET --> TRAIN --> EVAL --> GATE
-    DATASET --> SNAP
-    GATE -->|pass| PUBLISH --> REG
+    EXT_API --> FETCH
+    CRON --> CHORD
+    CHORD --> FETCH
+    FETCH --> MERGE
+    MERGE --> DATASET
+    DATASET --> TRAIN
+    TRAIN --> GATE
+    GATE -->|pass| PUBLISH
+    DATASET --> SNAPSHOTS
+    PUBLISH --> MODELS
 
-    REG --> REGISTRY --> PRED --> EST
-    REGISTRY --> READY
-    REG --> METRICS
-    API --> PROM
+    MODELS --> REGISTRY
+    REGISTRY --> PREDICT
+    PREDICT --> FASTAPI
 ```
 
 ## 🔁 Inference request flow
@@ -96,7 +103,8 @@ sequenceDiagram
 ## 📦 Core components
 
 ### 1️⃣ Training pipeline
-Runs as a Kubernetes **CronJob** (and can be executed manually).
+Runs as a Kubernetes **CronJob** (and can be executed manually). Current mode is
+**rolling 12-month** training with monthly snapshot reuse and de-duplication.
 
 ### Pipeline stages
 
@@ -139,6 +147,7 @@ Runs as a Kubernetes **CronJob** (and can be executed manually).
 - `POST /estimate` — batch price estimation
 - `GET /metrics` — raw model metrics
 - `GET /metrics/summary` — human-friendly quality report
+- `GET /metrics/prometheus` - Prometheus scrape
 
 ### Design principles
 
@@ -163,16 +172,17 @@ Runs as a Kubernetes **CronJob** (and can be executed manually).
 
 ### Current approach
 
-- Tabular regression (scikit-learn)
-- Model: `HistGradientBoostingRegressor`
+- Model: `CatBoostRegressor`
 - Target: `log1p(price)` with inverse transform on inference
-- Sliding window: currently full dataset (rolling window planned)
+- Handles categorical + numeric features natively
+- Stronger performance vs sklearn baseline
+- Sliding window: rolling 12-month window (monthly snapshots + merge)
 
 ### Feature groups
 
 - Property size (`total_area`, `usable_area`)
 - Location (`lat`, `lon`, `municipality`)
-- Building metadata (year built, floor, rooms, bedrooms)
+- Building metadata (`year built`, `floor`, `rooms`, `bedrooms`)
 - Real estate type
 - Derived ratios (e.g. area ratios)
 
@@ -244,8 +254,9 @@ This prevents silent production regressions.
     - `kind` — local development
     - `GKE` — production-like cluster
 - Explicit CPU / memory requests & limits
-- Training runs as a `CronJob`
+- Training runs as a `CronJob` that triggers rolling 12-month training
 - API runs as a `Deployment` with readiness probes
+- RabbitMQ and MinIO deployed as Helm releases
 
 ---
 
@@ -271,8 +282,8 @@ This prevents silent production regressions.
 - `kind`
 - `kubectl`
 - `helm`
-- RabbitMQ
-- MinIO (optional)
+- RabbitMQ (required for Celery tasks)
+- MinIO (optional, or use S3-compatible storage)
 
 ### Run locally
 ```bash
@@ -312,18 +323,21 @@ kubectl -n ree port-forward svc/ree-minio 9001:9001
 ```bash
 kubectl -n ree create job --from=cronjob/ree-training ree-training-manual
 ```
+### Trigger rolling training manually (outside CronJob):
+```bash
+uv run python -m scripts.rolling_12m --publish
+```
 ### Note:
 - Use you k8s config, example: `KUBECONFIG=~/.kube/kind-config kubectl`
 
 ---
 
 ## 🛣️ Roadmap (next steps)
-
-- Rolling 12-month loader (incremental data)
-- Model v3 (CatBoost)
+- Model v4 (feature engineering + calibration)
 - Richer geo features
 - Drift detection
-- Monitoring dashboards
+- Shadow evaluation
+- Online / offline metric comparison
 
 ---
 

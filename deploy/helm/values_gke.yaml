@@ -3,6 +3,25 @@ api:
 
 minio:
   enabled: false
+  useHelmDependency: false
 
 training:
   enabled: true
+
+rabbitmq:
+  enabled: true
+  fullnameOverride: ""
+  auth:
+    username: guest
+    password: guest
+    erlangCookie: "ree-cookie"
+
+worker:
+  enabled: true
+  replicaCount: 1
+  queues: "celery,training"
+
+workerTraining:
+  enabled: true
+  replicaCount: 1
+  queue: "training"

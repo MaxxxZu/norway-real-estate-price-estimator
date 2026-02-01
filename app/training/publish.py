@@ -31,10 +31,10 @@ def try_load_previous_metrics(storage: S3Storage) -> dict[str, Any] | None:
         return None
 
 
-def upload_model_artifacts(
+def _upload_model_artifacts_from_bytes(
     storage: S3Storage,
     model_version: str,
-    pipeline: Any,
+    pipeline_bytes: bytes,
     metrics: dict[str, Any],
     feature_schema: dict[str, Any],
     training_manifest: dict[str, Any],
@@ -45,12 +45,10 @@ def upload_model_artifacts(
     schema_key = f"{prefix}/feature_schema.json"
     manifest_key = f"{prefix}/training_manifest.json"
 
-    bio = BytesIO()
-    joblib.dump(pipeline, bio)
     storage.put_bytes(
         bucket=settings.s3_bucket_models,
         key=model_key,
-        data=bio.getvalue(),
+        data=pipeline_bytes,
         content_type="application/octet-stream",
     )
 
@@ -64,6 +62,44 @@ def upload_model_artifacts(
         "schema_key": schema_key,
         "manifest_key": manifest_key,
     }
+
+
+def upload_model_artifacts(
+    storage: S3Storage,
+    model_version: str,
+    pipeline: Any,
+    metrics: dict[str, Any],
+    feature_schema: dict[str, Any],
+    training_manifest: dict[str, Any],
+) -> dict[str, str]:
+    bio = BytesIO()
+    joblib.dump(pipeline, bio)
+    return _upload_model_artifacts_from_bytes(
+        storage=storage,
+        model_version=model_version,
+        pipeline_bytes=bio.getvalue(),
+        metrics=metrics,
+        feature_schema=feature_schema,
+        training_manifest=training_manifest,
+    )
+
+
+def upload_model_artifacts_from_bytes(
+    storage: S3Storage,
+    model_version: str,
+    pipeline_bytes: bytes,
+    metrics: dict[str, Any],
+    feature_schema: dict[str, Any],
+    training_manifest: dict[str, Any],
+) -> dict[str, str]:
+    return _upload_model_artifacts_from_bytes(
+        storage=storage,
+        model_version=model_version,
+        pipeline_bytes=pipeline_bytes,
+        metrics=metrics,
+        feature_schema=feature_schema,
+        training_manifest=training_manifest,
+    )
 
 
 def update_latest_json(

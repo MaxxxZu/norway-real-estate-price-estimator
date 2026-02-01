@@ -75,3 +75,9 @@ class S3Storage:
     def put_json(self, bucket: str, key: str, obj: dict[str, Any]) -> None:
         data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
         self.put_bytes(bucket=bucket, key=key, data=data, content_type="application/json")
+
+    def delete(self, bucket: str, key: str) -> None:
+        try:
+            self._client.delete_object(Bucket=bucket, Key=key)
+        except (ClientError, BotoCoreError) as e:
+            raise S3StorageError(f"Failed to delete s3://{bucket}/{key}") from e
