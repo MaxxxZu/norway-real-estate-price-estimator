@@ -16,7 +16,7 @@ from app.training.fetch import (
 from app.training.snapshots import (
     RawSnapshotPaths,
     SnapshotPaths,
-    load_jsonl_rows,
+    iter_jsonl_rows,
     raw_snapshot_exists,
     raw_snapshot_paths,
     upload_raw_snapshot,
@@ -138,11 +138,26 @@ def build_rolling_snapshot(
     )
     prefix = f"snapshots/rolling_12m/{window_id}"
 
-    all_rows: list[dict[str, Any]] = []
+    rows_raw_total = 0
+    latest: dict[int, dict[str, Any]] = {}
+    latest_dt: dict[int, date] = {}
     for snap in month_snapshots:
-        all_rows.extend(load_jsonl_rows(storage, snap.raw_rows_key))
+        for row in iter_jsonl_rows(storage, snap.raw_rows_key):
+            rows_raw_total += 1
+            prop_id = row.get("id") or row.get("property_id") or row.get("remote_id")
+            if not isinstance(prop_id, int):
+                continue
 
-    deduped_rows = dedupe_latest_by_property_id(all_rows)
+            row_dt = _parse_turnover_date(row.get("turnover_date"))
+            if row_dt is None:
+                continue
+
+            prev_dt = latest_dt.get(prop_id)
+            if prev_dt is None or row_dt >= prev_dt:
+                latest[prop_id] = row
+                latest_dt[prop_id] = row_dt
+
+    deduped_rows = list(latest.values())
     dataset_result: DatasetBuildResult = build_trainable_dataset(deduped_rows)
 
     window_start = shift_months(as_of.replace(day=1), -months)
@@ -152,7 +167,7 @@ def build_rolling_snapshot(
         "period": {"start_date": window_start.isoformat(), "end_date": window_end.isoformat()},
         "window": {"months": months, "as_of": as_of.isoformat()},
         "counts": {
-            "rows_raw_total": len(all_rows),
+            "rows_raw_total": rows_raw_total,
             "rows_raw_deduped": len(deduped_rows),
             "rows_trainable": len(dataset_result.trainable_rows),
         },

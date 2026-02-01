@@ -76,15 +76,16 @@ def upload_manifest(storage: S3Storage, bucket: str, key: str, manifest: dict[st
     storage.put_json(bucket=bucket, key=key, obj=manifest)
 
 
-def load_jsonl_rows(storage: S3Storage, key: str) -> list[dict[str, Any]]:
-    raw = storage.get_bytes(bucket=settings.s3_bucket_snapshots, key=key)
-    rows: list[dict[str, Any]] = []
-    for line in raw.decode("utf-8").splitlines():
+def iter_jsonl_rows(storage: S3Storage, key: str):
+    for line in storage.iter_lines(bucket=settings.s3_bucket_snapshots, key=key):
         line = line.strip()
         if not line:
             continue
-        rows.append(json.loads(line))
-    return rows
+        yield json.loads(line)
+
+
+def load_jsonl_rows(storage: S3Storage, key: str) -> list[dict[str, Any]]:
+    return list(iter_jsonl_rows(storage, key))
 
 
 def upload_snapshots(

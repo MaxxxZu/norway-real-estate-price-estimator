@@ -17,6 +17,11 @@ class FakeStorage:
     def get_bytes(self, bucket: str, key: str) -> bytes:
         return self._data[key]
 
+    def iter_lines(self, bucket: str, key: str):
+        for line in self._data[key].decode("utf-8").splitlines():
+            if line:
+                yield line
+
 
 def _jsonl(rows: list[dict]) -> bytes:
     return ("\n".join(json.dumps(r) for r in rows) + "\n").encode("utf-8")

@@ -72,6 +72,23 @@ class S3Storage:
         except Exception as e:
             raise S3StorageError(f"Invalid JSON at s3://{bucket}/{key}") from e
 
+    def iter_lines(self, bucket: str, key: str):
+        body = None
+        try:
+            resp = self._client.get_object(Bucket=bucket, Key=key)
+            body = resp["Body"]
+            for line in body.iter_lines():
+                if line:
+                    yield line.decode("utf-8")
+        except (ClientError, BotoCoreError) as e:
+            raise S3StorageError(f"Failed to stream s3://{bucket}/{key}") from e
+        finally:
+            if body is not None:
+                try:
+                    body.close()
+                except Exception:
+                    pass
+
     def put_json(self, bucket: str, key: str, obj: dict[str, Any]) -> None:
         data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
         self.put_bytes(bucket=bucket, key=key, data=data, content_type="application/json")
