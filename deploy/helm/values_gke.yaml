@@ -7,6 +7,8 @@ minio:
 
 training:
   enabled: true
+  rolling:
+    dryRun: false
 
 rabbitmq:
   enabled: true

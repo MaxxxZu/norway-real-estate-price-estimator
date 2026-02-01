@@ -31,6 +31,8 @@ training:
   backoffLimit: 1
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 2
+  rolling:
+    dryRun: false
 
 rabbitmq:
   enabled: true

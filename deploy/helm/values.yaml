@@ -73,6 +73,7 @@ training:
     forceFetch: false
     publish: true
     months: 12
+    dryRun: false
 
 rabbitmq:
   enabled: false

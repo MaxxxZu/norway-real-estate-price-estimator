@@ -290,6 +290,7 @@ def publish_rolling_12m(ctx: dict, publish: bool = True) -> dict:
 def trigger_rolling_12m(
     as_of: str | None = None,
     force_fetch: bool = False,
+    train: bool = True,
     publish: bool = True,
     months: int = 12,
 ) -> dict:
@@ -308,9 +309,9 @@ def trigger_rolling_12m(
             months=months,
             started_at=time.time(),
         )
-        | train_rolling_12m.s(train=True)
+        | train_rolling_12m.s(train=bool(train))
         | gate_rolling_12m.s()
-        | publish_rolling_12m.s(publish=bool(publish))
+        | publish_rolling_12m.s(publish=bool(publish and train))
     )
 
     result = chord(header)(callback)

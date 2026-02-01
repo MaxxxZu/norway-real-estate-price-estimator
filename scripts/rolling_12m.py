@@ -27,6 +27,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Force re-fetch monthly snapshots even if they exist.",
     )
     parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only build rolling snapshot (skip train/publish).",
+    )
+    parser.add_argument(
         "--publish",
         action="store_true",
         default=True,
@@ -47,6 +52,7 @@ def main() -> None:
     res = trigger_rolling_12m.delay(
         as_of=as_of,
         force_fetch=bool(args.force_fetch),
+        train=not bool(args.dry_run),
         publish=bool(args.publish),
         months=int(args.months),
     )

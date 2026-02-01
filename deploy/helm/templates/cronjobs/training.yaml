@@ -53,6 +53,9 @@ spec:
                   {{- if .Values.training.rolling.forceFetch }}
                   ARGS="$ARGS --force-fetch"
                   {{- end }}
+                  {{- if .Values.training.rolling.dryRun }}
+                  ARGS="$ARGS --dry-run"
+                  {{- end }}
                   {{- if .Values.training.rolling.publish }}
                   ARGS="$ARGS --publish"
                   {{- end }}
