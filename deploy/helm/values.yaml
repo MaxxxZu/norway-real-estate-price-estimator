@@ -19,6 +19,7 @@ secrets:
 
 minio:
   enabled: true
+  useHelmDependency: false
   image: minio/minio:latest
   storageSize: 10Gi
   service:
@@ -49,11 +50,34 @@ resources:
       cpu: "2"
       memory: 4Gi
 
+worker:
+  enabled: false
+  replicaCount: 1
+  queues: "celery,training"
+
+workerTraining:
+  enabled: false
+  replicaCount: 1
+  queue: "training"
+
 training:
   enabled: false
   suspend: true
-  schedule: "0 2 1 * *"
+  schedule: "5 3 1 * *"   # 03:05, 1st day of month
   timezone: "Europe/Oslo"
   backoffLimit: 1
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 2
+  rolling:
+    asOf: ""
+    forceFetch: false
+    publish: true
+    months: 12
+
+rabbitmq:
+  enabled: false
+  fullnameOverride: ""
+  auth:
+    username: guest
+    password: guest
+    erlangCookie: "ree-cookie"

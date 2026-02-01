@@ -1,5 +1,5 @@
 from celery import Celery
-from celery.schedules import crontab
+from kombu import Queue
 
 from app.config import settings
 
@@ -24,13 +24,10 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
     broker_connection_retry_on_startup=True,
+    task_queues=(
+        Queue("celery"),
+        Queue("training"),
+    ),
 )
 
 celery_app.autodiscover_tasks(["app.tasks"])
-
-celery_app.conf.beat_schedule = {
-    "retrain-previous-month": {
-        "task": "app.tasks.retrain.retrain_previous_month",
-        "schedule": crontab(minute=5, hour=3, day_of_month="1"),
-    }
-}

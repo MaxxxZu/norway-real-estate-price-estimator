@@ -17,6 +17,15 @@ class SnapshotPaths:
     manifest_key: str
 
 
+@dataclass(frozen=True)
+class RawSnapshotPaths:
+    prefix: str
+    raw_rows_key: str
+    manifest_key: str
+    start_date: str
+    end_date: str
+
+
 def snapshot_paths(start_date: str, end_date: str) -> SnapshotPaths:
     prefix = f"snapshots/{start_date}_{end_date}"
     return SnapshotPaths(
@@ -24,6 +33,26 @@ def snapshot_paths(start_date: str, end_date: str) -> SnapshotPaths:
         raw_rows_key=f"{prefix}/rows_raw.jsonl",
         dataset_key=f"{prefix}/dataset.parquet",
         manifest_key=f"{prefix}/manifest.json",
+    )
+
+
+def snapshot_paths_for_prefix(prefix: str) -> SnapshotPaths:
+    return SnapshotPaths(
+        prefix=prefix,
+        raw_rows_key=f"{prefix}/rows_raw.jsonl",
+        dataset_key=f"{prefix}/dataset.parquet",
+        manifest_key=f"{prefix}/manifest.json",
+    )
+
+
+def raw_snapshot_paths(start_date: str, end_date: str) -> RawSnapshotPaths:
+    prefix = f"snapshots/{start_date}_{end_date}"
+    return RawSnapshotPaths(
+        prefix=prefix,
+        raw_rows_key=f"{prefix}/rows_raw.jsonl",
+        manifest_key=f"{prefix}/manifest.json",
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -47,6 +76,17 @@ def upload_manifest(storage: S3Storage, bucket: str, key: str, manifest: dict[st
     storage.put_json(bucket=bucket, key=key, obj=manifest)
 
 
+def load_jsonl_rows(storage: S3Storage, key: str) -> list[dict[str, Any]]:
+    raw = storage.get_bytes(bucket=settings.s3_bucket_snapshots, key=key)
+    rows: list[dict[str, Any]] = []
+    for line in raw.decode("utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        rows.append(json.loads(line))
+    return rows
+
+
 def upload_snapshots(
     storage: S3Storage,
     start_date: str,
@@ -56,11 +96,48 @@ def upload_snapshots(
     manifest: dict[str, Any],
 ) -> SnapshotPaths:
     paths = snapshot_paths(start_date, end_date)
+    _upload_snapshot_files(
+        storage=storage,
+        paths=paths,
+        raw_rows=raw_rows,
+        trainable_rows=trainable_rows,
+        manifest=manifest,
+    )
+    return paths
 
-    upload_jsonl(storage, settings.s3_bucket_snapshots, paths.raw_rows_key, raw_rows)
-    upload_parquet(storage, settings.s3_bucket_snapshots, paths.dataset_key, trainable_rows)
-    upload_manifest(storage, settings.s3_bucket_snapshots, paths.manifest_key, manifest)
 
+def upload_snapshots_with_prefix(
+    storage: S3Storage,
+    prefix: str,
+    raw_rows: list[dict[str, Any]],
+    trainable_rows: list[dict[str, Any]],
+    manifest: dict[str, Any],
+) -> SnapshotPaths:
+    paths = snapshot_paths_for_prefix(prefix)
+    _upload_snapshot_files(
+        storage=storage,
+        paths=paths,
+        raw_rows=raw_rows,
+        trainable_rows=trainable_rows,
+        manifest=manifest,
+    )
+    return paths
+
+
+def upload_raw_snapshot(
+    storage: S3Storage,
+    start_date: str,
+    end_date: str,
+    raw_rows: list[dict[str, Any]],
+    manifest: dict[str, Any],
+) -> RawSnapshotPaths:
+    paths = raw_snapshot_paths(start_date, end_date)
+    _upload_raw_snapshot_files(
+        storage=storage,
+        paths=paths,
+        raw_rows=raw_rows,
+        manifest=manifest,
+    )
     return paths
 
 
@@ -68,6 +145,34 @@ def snapshot_exists(storage: S3Storage, paths: SnapshotPaths) -> bool:
     return storage.exists(settings.s3_bucket_snapshots, paths.dataset_key) and storage.exists(
         settings.s3_bucket_snapshots, paths.manifest_key
     )
+
+
+def raw_snapshot_exists(storage: S3Storage, paths: RawSnapshotPaths) -> bool:
+    return storage.exists(settings.s3_bucket_snapshots, paths.raw_rows_key) and storage.exists(
+        settings.s3_bucket_snapshots, paths.manifest_key
+    )
+
+
+def _upload_snapshot_files(
+    storage: S3Storage,
+    paths: SnapshotPaths,
+    raw_rows: list[dict[str, Any]],
+    trainable_rows: list[dict[str, Any]],
+    manifest: dict[str, Any],
+) -> None:
+    upload_jsonl(storage, settings.s3_bucket_snapshots, paths.raw_rows_key, raw_rows)
+    upload_parquet(storage, settings.s3_bucket_snapshots, paths.dataset_key, trainable_rows)
+    upload_manifest(storage, settings.s3_bucket_snapshots, paths.manifest_key, manifest)
+
+
+def _upload_raw_snapshot_files(
+    storage: S3Storage,
+    paths: RawSnapshotPaths,
+    raw_rows: list[dict[str, Any]],
+    manifest: dict[str, Any],
+) -> None:
+    upload_jsonl(storage, settings.s3_bucket_snapshots, paths.raw_rows_key, raw_rows)
+    upload_manifest(storage, settings.s3_bucket_snapshots, paths.manifest_key, manifest)
 
 
 def load_manifest(storage: S3Storage, manifest_key: str) -> dict[str, Any]:

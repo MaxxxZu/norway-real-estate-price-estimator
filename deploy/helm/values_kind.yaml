@@ -14,6 +14,7 @@ api:
 
 minio:
   enabled: true
+  useHelmDependency: false
 
 s3:
   endpoint: http://ree-minio:9000
@@ -30,3 +31,21 @@ training:
   backoffLimit: 1
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 2
+
+rabbitmq:
+  enabled: true
+  fullnameOverride: ""
+  auth:
+    username: guest
+    password: guest
+    erlangCookie: "ree-cookie"
+
+worker:
+  enabled: true
+  replicaCount: 1
+  queues: "celery,training"
+
+workerTraining:
+  enabled: true
+  replicaCount: 1
+  queue: "training"

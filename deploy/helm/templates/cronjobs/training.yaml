@@ -31,10 +31,28 @@ spec:
               envFrom:
                 - secretRef:
                     name: {{ .Values.secrets.name }}
+              {{- if .Values.rabbitmq.enabled }}
+              env:
+                - name: REE_CELERY_BROKER_URL
+                  value: "amqp://{{ .Values.rabbitmq.auth.username }}:{{ .Values.rabbitmq.auth.password }}@{{ default (printf \"%s-rabbitmq\" .Release.Name) .Values.rabbitmq.fullnameOverride }}:5672//"
+              {{- end }}
               command: ["/bin/sh", "-lc"]
               args:
                 - |
                   set -e
-                  echo "Starting monthly retrain (previous month)..."
-                  uv run python -m scripts.train_previous_month
+                  echo "Triggering rolling 12-month retrain..."
+                  ARGS=""
+                  {{- if .Values.training.rolling.asOf }}
+                  ARGS="$ARGS --as-of {{ .Values.training.rolling.asOf }}"
+                  {{- end }}
+                  {{- if .Values.training.rolling.forceFetch }}
+                  ARGS="$ARGS --force-fetch"
+                  {{- end }}
+                  {{- if .Values.training.rolling.publish }}
+                  ARGS="$ARGS --publish"
+                  {{- end }}
+                  {{- if .Values.training.rolling.months }}
+                  ARGS="$ARGS --months {{ .Values.training.rolling.months }}"
+                  {{- end }}
+                  uv run python -m scripts.rolling_12m ${ARGS}
 {{- end }}
