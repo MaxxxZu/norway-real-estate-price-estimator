@@ -25,11 +25,9 @@ def test_batch_validation_errors_are_per_property(client):
     assert resp.status_code == 422
     body = resp.json()
     assert "detail" in body
-    detail = body["detail"]
-    assert isinstance(detail, dict)
-    assert detail.get("message") == "validation_failed"
-    errors = detail.get("errors")
-    assert isinstance(errors, dict)
-    assert "bad_missing" in errors
-    assert "bad_logic" in errors
-    assert "ok" not in errors
+    errors = body["detail"]
+    assert isinstance(errors, list)
+    error_locs = [e["loc"] for e in errors]
+    assert any("bad_missing" in str(loc) for loc in error_locs)
+    assert any("bad_logic" in str(loc) for loc in error_locs)
+    assert not any("ok" in str(loc) for loc in error_locs)

@@ -5,26 +5,13 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 from app.api.examples import ESTIMATE_REQUEST_EXAMPLES
 from app.api.routes.metrics import router as metrics_router
 from app.config import settings
+from app.dependencies import get_predictor
 from app.ml.base import Predictor
-from app.ml.registry import ModelNotReadyError, ModelRegistry
-from app.schemas import EstimateResponse, HealthCheckResponse, ValidationErrorResponse
+from app.schemas import EstimateRequest, EstimateResponse, HealthCheckResponse
 from app.services.estimate_service import estimate_batch
-from app.storage.s3 import S3Storage
 
 router = APIRouter()
 router.include_router(metrics_router)
-
-_storage = S3Storage()
-_registry = ModelRegistry(_storage, refresh_seconds=settings.model_registry_refresh_seconds)
-
-
-def get_predictor() -> Predictor:
-    try:
-        return _registry.get_predictor()
-    except ModelNotReadyError as e:
-        raise HTTPException(
-            status_code=503, detail={"message": "model_not_ready", "reason": str(e)}
-        )
 
 
 @router.get(
@@ -43,25 +30,18 @@ async def get_health() -> HealthCheckResponse:
     "/estimate",
     response_model=EstimateResponse,
     responses={
-        422: {"model": ValidationErrorResponse},
         503: {"description": "Model not ready"},
     },
     tags=["estimation"],
 )
 def estimate(
-    payload: dict[str, dict[str, Any]] = Body(..., openapi_examples=ESTIMATE_REQUEST_EXAMPLES),
+    payload: EstimateRequest = Body(..., openapi_examples=ESTIMATE_REQUEST_EXAMPLES),
     predictor: Predictor = Depends(get_predictor),
 ) -> Any:
     if not payload:
         raise HTTPException(status_code=422, detail="Empty payload")
 
-    results, errors = estimate_batch(payload, predictor=predictor)
-    if errors:
-        raise HTTPException(
-            status_code=422, detail={"message": "validation_failed", "errors": errors}
-        )
-
-    return results
+    return estimate_batch(payload, predictor=predictor)
 
 
 @router.get(
@@ -71,6 +51,5 @@ def estimate(
     response_description="Return HTTP Status Code 200 (OK)",
     status_code=status.HTTP_200_OK,
 )
-def get_ready() -> dict[str, str]:
-    _ = get_predictor()
+def get_ready(predictor: Predictor = Depends(get_predictor)) -> dict[str, str]:
     return {"status": "ready"}

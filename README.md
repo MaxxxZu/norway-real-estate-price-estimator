@@ -144,6 +144,7 @@ Runs as a Kubernetes **CronJob** (and can be executed manually).
 
 - Batch-first API (property_id → features)
 - Strict validation (“better no estimate than a wrong one”)
+- Invalid requests return HTTP 422 with FastAPI/Pydantic validation errors (list in `detail`)
 - Predictor logic isolated from HTTP layer
 - Explicit readiness based on model availability
 
