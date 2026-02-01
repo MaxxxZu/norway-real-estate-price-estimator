@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.config import settings
 from app.storage.s3 import S3Storage
@@ -22,7 +22,7 @@ def main() -> None:
         "model_version": model_version,
         "type": "stub",
         "artifact_key": artifact_key,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
     storage.put_json(bucket=settings.s3_bucket_models, key=artifact_key, obj=artifact)

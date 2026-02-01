@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from app.config import settings
 from app.ml.base import Predictor
@@ -30,8 +30,8 @@ class ModelRegistry:
         self._storage = storage
         self._refresh_seconds = max(int(refresh_seconds), 1)
 
-        self._cached_predictor: Optional[StubPredictor] = None
-        self._cached_version: Optional[str] = None
+        self._cached_predictor: StubPredictor | None = None
+        self._cached_version: str | None = None
         self._cached_at: float = 0.0
 
     def get_predictor(self) -> Predictor:
@@ -87,16 +87,14 @@ class ModelRegistry:
         if model_ref.model_type == "stub":
             try:
                 artifact = self._storage.get_json(
-                    bucket=settings.s3_bucket_models,
-                    key=model_ref.artifact_key
+                    bucket=settings.s3_bucket_models, key=model_ref.artifact_key
                 )
             except S3StorageError as e:
                 raise ModelNotReadyError(
                     f"Failed to load stub artifact: {model_ref.artifact_key}"
                 ) from e
             return StubPredictor.from_artifact(
-                model_version=model_ref.model_version,
-                artifact=artifact
+                model_version=model_ref.model_version, artifact=artifact
             )
 
         if model_ref.model_type == "sklearn":
@@ -116,7 +114,7 @@ class ModelRegistry:
             return SklearnPredictor.from_bytes(
                 model_version=model_ref.model_version,
                 data=data,
-                prediction_transform=prediction_transform
+                prediction_transform=prediction_transform,
             )
 
     def get_active_metrics(self) -> dict[str, Any]:
@@ -130,9 +128,7 @@ class ModelRegistry:
                 key=metrics_key,
             )
         except S3StorageError as e:
-            raise ModelNotReadyError(
-                f"Metrics not found for active model ({metrics_key})"
-            ) from e
+            raise ModelNotReadyError(f"Metrics not found for active model ({metrics_key})") from e
 
         return {
             "model_version": ref.model_version,

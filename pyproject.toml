@@ -27,15 +27,15 @@ dependencies = [
 dev = [
     "pytest-cov>=7.0.0",
     "pytest>=9.0.2",
-    "flake8>=7.3.0",
-    "isort>=7.0.0",
+    "ruff>=0.12.10",
+    "pre-commit>=4.2.0",
     "honcho>=2.0.0",
     "watchfiles>=1.1.1",
 ]
 
-[tool.flake8]
-max-line-length = 99
-extend-ignore = ["E203", "W503"]
+[tool.ruff]
+target-version = "py311"
+line-length = 99
 exclude = [
     ".git",
     "__pycache__",
@@ -46,17 +46,22 @@ exclude = [
     "build",
 ]
 
-[tool.isort]
-profile = "black"
-line_length = 99
-combine_as_imports = true
-force_grid_wrap = 0
-include_trailing_comma = true
-multi_line_output = 3
-ensure_newline_before_comments = true
-known_third_party = ["fastapi", "uvicorn", "pydantic", "pydantic_settings"]
-skip = [".venv", "dist", ".mypy_cache", ".pytest_cache", "build", "__pycache__"]
-skip_glob = ["**/__pycache__/*", "**/*.pyc"]
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+]
+ignore = ["E203", "B008", "B904", "B905", "N818", "B006"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-wrap-aliases = true
+known-third-party = ["fastapi", "uvicorn", "pydantic", "pydantic_settings"]
 
 [tool.pytest.ini_options]
 addopts = "--maxfail=1 --disable-warnings -q"
@@ -68,3 +73,4 @@ filterwarnings = [
   "ignore::FutureWarning:transformers",
   "ignore::ImportWarning:torch"
 ]
+

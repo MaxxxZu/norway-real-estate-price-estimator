@@ -1,6 +1,6 @@
 import os
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def _short_git_sha() -> str:
@@ -16,5 +16,5 @@ def _short_git_sha() -> str:
 
 
 def make_model_version() -> str:
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M")
     return f"{ts}-{_short_git_sha()}"

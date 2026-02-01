@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.config import settings
@@ -42,9 +42,7 @@ def build_metrics_summary(raw: dict[str, Any]) -> dict[str, Any]:
         )
 
     if int(float(overall["ae_p90"])) >= settings.metrics_ae_p90_tail_risk_nok:
-        notes.append(
-            f"Tail risk: AE_p90 is ~{int(float(overall['ae_p90'])):,} NOK overall."
-        )
+        notes.append(f"Tail risk: AE_p90 is ~{int(float(overall['ae_p90'])):,} NOK overall.")
 
     return {
         "model": {
@@ -76,5 +74,5 @@ def build_metrics_summary(raw: dict[str, Any]) -> dict[str, Any]:
             "ae_p90_tail_risk_nok": settings.metrics_ae_p90_tail_risk_nok,
         },
         "notes": notes,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
     }

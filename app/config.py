@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,7 +9,7 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
 
-    cors_origins: List[str] = Field(
+    cors_origins: list[str] = Field(
         default_factory=lambda: ["*"],
         description="Allowed origins",
     )

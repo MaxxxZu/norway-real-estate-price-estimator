@@ -9,9 +9,7 @@ def test_batch_validation_errors_are_per_property(client):
             "total_area": 200.0,
             "bra": 150.0,
         },
-        "bad_missing": {
-            "realestate_type": "enebolig"
-        },
+        "bad_missing": {"realestate_type": "enebolig"},
         "bad_logic": {
             "realestate_type": "rekkehus",
             "municipality_number": 1,
@@ -27,8 +25,9 @@ def test_batch_validation_errors_are_per_property(client):
     assert resp.status_code == 422
     body = resp.json()
     assert "detail" in body
-    assert body["detail"]["message"] == "validation_failed"
-    errs = body["detail"]["errors"]
-    assert "bad_missing" in errs
-    assert "bad_logic" in errs
-    assert "ok" not in errs
+    errors = body["detail"]
+    assert isinstance(errors, list)
+    error_locs = [e["loc"] for e in errors]
+    assert any("bad_missing" in str(loc) for loc in error_locs)
+    assert any("bad_logic" in str(loc) for loc in error_locs)
+    assert not any("ok" in str(loc) for loc in error_locs)

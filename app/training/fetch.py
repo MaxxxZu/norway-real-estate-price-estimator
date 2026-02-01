@@ -108,9 +108,7 @@ def build_properties(api_client: ApiClient, cadastral_unit_ids: list[int]) -> di
 
 def fetch_estimation_params(api_client: ApiClient, properties: dict[int, dict]) -> dict[str, dict]:
     property_ids: list[int] = [
-        int(prop["property_ids"][0])
-        for prop in properties.values()
-        if property_is_valid(prop)
+        int(prop["property_ids"][0]) for prop in properties.values() if property_is_valid(prop)
     ]
     if not property_ids:
         return {}
@@ -122,9 +120,7 @@ def fetch_estimation_params(api_client: ApiClient, properties: dict[int, dict]) 
 
 
 def build_rows(
-    turnovers: list[dict],
-    properties: dict[int, dict],
-    estimation_params: dict[str, dict]
+    turnovers: list[dict], properties: dict[int, dict], estimation_params: dict[str, dict]
 ) -> list[dict]:
     rows: list[dict] = []
 

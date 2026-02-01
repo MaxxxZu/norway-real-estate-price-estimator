@@ -1,5 +1,5 @@
 import json
-from typing import Any, Optional
+from typing import Any
 
 import boto3
 from botocore.config import Config
@@ -55,7 +55,7 @@ class S3Storage:
         bucket: str,
         key: str,
         data: bytes,
-        content_type: Optional[str] = None,
+        content_type: str | None = None,
     ) -> None:
         try:
             extra = {}

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any
 
@@ -76,7 +76,7 @@ def update_latest_json(
         "model_version": model_version,
         "type": "sklearn",
         "artifact_key": artifact_key,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "snapshot_prefix": snapshot_prefix,
     }
     storage.put_json(bucket=settings.s3_bucket_models, key="latest.json", obj=latest)

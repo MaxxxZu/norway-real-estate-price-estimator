@@ -7,11 +7,12 @@ test:
 	uv run pytest
 
 lint:
-	uv run flake8 .
-	uv run isort . --filter-files
+	uv run ruff check .
+	uv run ruff format --check .
 
 format:
-	uv run isort . --filter-files
+	uv run ruff check --fix .
+	uv run ruff format .
 
 cov:
 	uv run pytest --cov=services --cov=app --cov-report=term-missing
