@@ -71,9 +71,4 @@ class EstimateResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-class ValidationErrorResponse(BaseModel):
-    message: str = "validation_failed"
-    errors: dict[str, list[str]]
-
-
 EstimateResponse = dict[str, EstimateResult]
