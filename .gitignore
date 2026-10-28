@@ -26,3 +26,6 @@ celerybeat.pid
 
 
 catboost_info/
+
+# Local planning
+/docs/IMPLEMENTATION_ROADMAP.md
