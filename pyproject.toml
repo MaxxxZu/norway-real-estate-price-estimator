@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 authors = [{ name = "Maksym Zyultsle" }]
 dependencies = [
     "boto3>=1.42.30",
-    "celery>=5.6.2",
+    "celery[redis]>=5.6.2",
     "fastapi>=0.128.0",
     "httpx>=0.28.1",
     "joblib>=1.5.3",
@@ -64,7 +64,11 @@ force-wrap-aliases = true
 known-third-party = ["fastapi", "uvicorn", "pydantic", "pydantic_settings"]
 
 [tool.pytest.ini_options]
-addopts = "--maxfail=1 --disable-warnings -q"
+markers = [
+    "integration: requires explicitly authorized local services",
+    "training: executes real model fitting",
+]
+addopts = "--strict-markers --maxfail=1 --disable-warnings -q"
 testpaths = ["tests"]
 pythonpath = ["."]
 filterwarnings = [

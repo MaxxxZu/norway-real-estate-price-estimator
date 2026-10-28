@@ -1,4 +1,6 @@
-from celery import Celery, Task
+from urllib.parse import urlsplit
+
+from celery import Celery, Task, bootsteps
 from kombu import Queue
 
 from app.config import settings
@@ -7,6 +9,7 @@ celery_app = Celery(
     "ree",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend or None,
+    include=["app.tasks.rolling"],
 )
 
 
@@ -33,7 +36,7 @@ celery_app.conf.update(
     timezone=settings.celery_timezone,
     enable_utc=True,
     task_track_started=True,
-    task_ignore_result=not bool(settings.celery_result_backend),
+    task_ignore_result=False,  # Chord header tasks must persist results, including with overrides.
     task_default_retry_delay=60,
     task_max_retries=5,
     task_serializer="json",
@@ -50,4 +53,29 @@ celery_app.conf.update(
     ),
 )
 
-celery_app.autodiscover_tasks(["app.tasks"])
+
+def validate_rolling_backend(app: Celery) -> None:
+    """Check effective Celery configuration without instantiating/connecting a backend."""
+    try:
+        scheme = urlsplit(app.conf.result_backend or "").scheme.lower()
+    except ValueError:
+        scheme = ""
+    if scheme not in {"redis", "rediss", "redis+socket"}:
+        raise ValueError(
+            "Rolling chords require a Redis result backend; configure "
+            "CELERY_RESULT_BACKEND (takes precedence) or REE_CELERY_RESULT_BACKEND "
+            "with redis://, rediss:// or redis+socket://."
+        )
+    if app.conf.task_ignore_result:
+        raise ValueError("Rolling chords require task_ignore_result=False.")
+
+
+class ValidateRollingBackend(bootsteps.StartStopStep):
+    """Fail before consuming training tasks; inference imports remain independent."""
+
+    def __init__(self, worker, **kwargs):
+        if "training" in worker.app.amqp.queues.consume_from:
+            validate_rolling_backend(worker.app)
+
+
+celery_app.steps["worker"].add(ValidateRollingBackend)

@@ -1,4 +1,8 @@
+import pytest
+
 from app.training.modeling import train_and_evaluate
+
+pytestmark = pytest.mark.training
 
 
 def test_train_and_evaluate_smoke():

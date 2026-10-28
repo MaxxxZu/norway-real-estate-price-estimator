@@ -1,3 +1,5 @@
+import os
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,7 +20,7 @@ class Settings(BaseSettings):
         default="amqp://guest:guest@rabbitmq:5672//",
     )
     celery_result_backend: str = Field(
-        default="rpc://",
+        default="redis://localhost:6379/0",
     )
     celery_timezone: str = Field(default="Europe/Ljubljana")
 
@@ -50,7 +52,7 @@ class Settings(BaseSettings):
     metrics_ae_p90_tail_risk_nok: int = Field(default=2_000_000)
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=os.environ.get("REE_ENV_FILE", ".env"),
         env_prefix="REE_",
         env_file_encoding="utf-8",
         extra="ignore",

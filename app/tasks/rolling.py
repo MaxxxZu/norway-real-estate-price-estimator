@@ -5,7 +5,13 @@ from io import BytesIO
 import joblib
 from celery import chord
 
-from app.celery_app import TrainingLongTask, TrainingShortTask, TrainingTask, celery_app
+from app.celery_app import (
+    TrainingLongTask,
+    TrainingShortTask,
+    TrainingTask,
+    celery_app,
+    validate_rolling_backend,
+)
 from app.clients.api_client import ApiClient
 from app.config import settings
 from app.observability.logging import log
@@ -286,14 +292,18 @@ def publish_rolling_12m(ctx: dict, publish: bool = True) -> dict:
             )
 
 
-@celery_app.task(name="app.tasks.rolling.trigger_rolling_12m", queue="training", base=TrainingTask)
+@celery_app.task(
+    name="app.tasks.rolling.trigger_rolling_12m", queue="training", base=TrainingTask, bind=True
+)
 def trigger_rolling_12m(
+    self,
     as_of: str | None = None,
     force_fetch: bool = False,
     train: bool = True,
     publish: bool = True,
     months: int = 12,
 ) -> dict:
+    validate_rolling_backend(self.app)
     as_of_date = date.fromisoformat(as_of) if as_of else date.today()
     ranges = month_ranges(as_of_date, months=months)
 
