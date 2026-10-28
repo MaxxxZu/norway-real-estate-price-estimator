@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from app.features import feature_schema
 from app.ml.registry import ModelNotReadyError, ModelRegistry
 from app.ml.stub import StubPredictor
 from app.storage.s3 import S3Storage, S3StorageError
@@ -76,7 +77,7 @@ def test_build_predictor_sklearn(mock_storage):
     mock_storage.get_json.side_effect = [
         # latest.json
         {"model_version": "v2", "type": "sklearn", "artifact_key": "models/v2/model.joblib"},
-        {"prediction_transform": "log1p"},
+        feature_schema(2025),
     ]
     mock_storage.get_bytes.return_value = b"fake-joblib-data"
 

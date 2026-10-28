@@ -118,15 +118,18 @@ Runs as a Kubernetes **CronJob** (and can be executed manually). Current mode is
 
 ### Artifacts stored per training run
 
-- `rows_raw.jsonl` — raw normalized rows
+- `rows_raw.jsonl` — fetched source rows (including rejected rows)
 - `dataset.parquet` — trainable dataset
-- `manifest.json` — dataset statistics & dropped rows
+- `manifest.json` — versioned completion, fingerprints, source lineage and drop reasons
 - `model.pkl` — trained model
 - `metrics.json` — evaluation metrics
-- `feature_schema.json` — schema used for inference
+- `feature_schema.json` — versioned shared features and fixed reference year
 - `latest.json` — pointer to the active model
 
 ---
+
+Snapshot revision paths, normalization, feature contracts and the owner-selected
+legacy rejection/transition policy are documented in [Data contracts](docs/DATA_CONTRACTS.md).
 
 ### 2️⃣ Model Registry
 

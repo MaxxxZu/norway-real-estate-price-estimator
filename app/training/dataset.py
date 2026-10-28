@@ -1,19 +1,53 @@
+"""Versioned, normalized rows; rejected values never reach the feature builder."""
+
 from collections import Counter
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
-from app.schemas import RealEstateType
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
-REQUIRED_FIELDS = [
-    "price",
-    "realestate_type",
-    "municipality_number",
-    "lat",
-    "lon",
-    "built_year",
-    "bra",
-    "total_area",
-]
+from app.schemas import EstimationFeatures
+
+NORMALIZATION_VERSION = 1
+
+
+class TrainingIdentity(BaseModel):
+    model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
+
+    id: int = Field(gt=0)
+    turnover_date: date
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_booleans(cls, values):
+        if not isinstance(values, dict):
+            raise ValueError("row must be an object")
+        for key in cls.model_fields:
+            if isinstance(values.get(key), bool):
+                raise ValueError(f"boolean:{key}")
+        return values
+
+    @field_validator("turnover_date", mode="before")
+    @classmethod
+    def parse_date(cls, value):
+        if isinstance(value, str):
+            return date.fromisoformat(value)
+        if type(value) is date:
+            return value
+        raise ValueError("expected ISO calendar date")
+
+
+class TrainingRow(TrainingIdentity, EstimationFeatures):
+    model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
+    price: float = Field(gt=0)
 
 
 @dataclass(frozen=True)
@@ -24,58 +58,23 @@ class DatasetBuildResult:
 
 def build_trainable_dataset(rows: list[dict[str, Any]]) -> DatasetBuildResult:
     reasons = Counter()
-    trainable: list[dict[str, Any]] = []
-
-    for r in rows:
-        missing = [f for f in REQUIRED_FIELDS if r.get(f) is None]
-        if missing:
-            reasons[f"missing:{','.join(missing)}"] += 1
-            continue
-
-        if not isinstance(r["price"], (int, float)) or r["price"] <= 0:
-            reasons["invalid:price"] += 1
-            continue
-
-        if not isinstance(r["bra"], (int, float)) or r["bra"] <= 0:
-            reasons["invalid:bra"] += 1
-            continue
-
-        if not isinstance(r["total_area"], (int, float)) or r["total_area"] <= 0:
-            reasons["invalid:total_area"] += 1
-            continue
-
-        if float(r["total_area"]) < float(r["bra"]):
-            reasons["invalid:total_area_lt_bra"] += 1
-            continue
-
-        rt = r.get("realestate_type")
+    trainable = []
+    for row in rows:
         try:
-            rt_enum = RealEstateType(rt)
-        except Exception:
-            reasons["invalid:realestate_type"] += 1
+            normalized = TrainingRow.model_validate(row)
+        except ValidationError as exc:
+            error = exc.errors()[0]
+            field = ".".join(map(str, error["loc"])) or "row"
+            message = error["msg"]
+            if "floor is required" in message:
+                reason = "missing:floor_for_leilighet"
+            elif "total_area must be >= bra" in message:
+                reason = "invalid:total_area_lt_bra"
+            elif "boolean:" in message:
+                reason = "invalid:" + message.split("boolean:", 1)[1]
+            else:
+                reason = f"{'missing' if error['type'] == 'missing' else 'invalid'}:{field}"
+            reasons[reason] += 1
             continue
-
-        if rt_enum == RealEstateType.leilighet and r.get("floor") is None:
-            reasons["missing:floor_for_leilighet"] += 1
-            continue
-
-        try:
-            lat = float(r["lat"])
-            lon = float(r["lon"])
-            if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-                raise ValueError
-        except Exception:
-            reasons["invalid:latlon"] += 1
-            continue
-
-        try:
-            by = int(r["built_year"])
-            if by < 1800 or by > 2100:
-                raise ValueError
-        except Exception:
-            reasons["invalid:built_year"] += 1
-            continue
-
-        trainable.append(r)
-
-    return DatasetBuildResult(trainable_rows=trainable, dropped_reasons=dict(reasons))
+        trainable.append(normalized.model_dump(mode="json"))
+    return DatasetBuildResult(trainable, dict(sorted(reasons.items())))

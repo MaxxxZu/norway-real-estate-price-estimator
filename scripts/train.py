@@ -49,8 +49,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force-fetch",
         action="store_true",
-        help="Fetch from external API for the given dates, build snapshot "
-        "and update snapshots/latest.json.",
+        help="Fetch from external API for the given dates and create "
+        "an immutable versioned snapshot revision.",
     )
 
     return parser
