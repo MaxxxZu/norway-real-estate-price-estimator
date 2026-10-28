@@ -133,6 +133,7 @@ class Pipeline:
             trainable_rows=dataset_result.trainable_rows,
             manifest=self.manifest,
         )
+        self.manifest = load_manifest(self.storage, self.paths.manifest_key)
 
     def _fetch_latest_snapshot(self) -> None:
         if self.force_fetch:
@@ -159,7 +160,10 @@ class Pipeline:
             self.storage,
             self.paths.dataset_key,
         )
-        train_result = train_and_evaluate(trainable_rows)
+        train_result = train_and_evaluate(
+            trainable_rows,
+            reference_year=date.fromisoformat(self.manifest["period"]["end_date"]).year,
+        )
 
         self.result["metrics"] = train_result.metrics
 

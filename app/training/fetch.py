@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -51,7 +52,12 @@ def normalize_turnovers(turnovers: list[dict]) -> list[dict]:
             continue
 
         price = t.get("price")
-        if not isinstance(price, (int, float)) or price <= 0:
+        if (
+            isinstance(price, bool)
+            or not isinstance(price, (int, float))
+            or not math.isfinite(price)
+            or price <= 0
+        ):
             continue
 
         raw_dt = t.get("turnover_date")
@@ -69,7 +75,7 @@ def normalize_turnovers(turnovers: list[dict]) -> list[dict]:
         normalized.append(
             {
                 "turnover_date": dt.strftime("%Y-%m-%d"),
-                "price": int(price),
+                "price": float(price),
                 "cadastral_unit_ids": cadastral_ids,
             }
         )
@@ -142,13 +148,13 @@ def build_rows(
             continue
 
         row = {
+            **params,
             "id": prop_id,
             "remote_id": prop_id,
             "price": t.get("price"),
             "turnover_date": t.get("turnover_date"),
             "cadastral_num": prop.get("full_unit"),
         }
-        row.update(params)
         rows.append(row)
 
     return rows

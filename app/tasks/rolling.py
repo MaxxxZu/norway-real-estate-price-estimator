@@ -139,7 +139,10 @@ def train_rolling_12m(ctx: dict, train: bool = True) -> dict:
 
         storage = S3Storage()
         trainable_rows = load_trainable_rows_from_parquet(storage, ctx["dataset_key"])
-        train_result = train_and_evaluate(trainable_rows)
+        train_result = train_and_evaluate(
+            trainable_rows,
+            reference_year=date.fromisoformat(ctx["manifest"]["period"]["end_date"]).year,
+        )
 
         bio = BytesIO()
         joblib.dump(train_result.pipeline, bio)

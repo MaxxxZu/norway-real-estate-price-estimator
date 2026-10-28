@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.config import settings
+from app.features import validate_feature_schema
 from app.ml.base import Predictor
 from app.ml.sklearn_predictor import SklearnPredictor
 from app.ml.stub import StubPredictor
@@ -109,12 +110,15 @@ class ModelRegistry:
                 ) from e
 
             schema = self._load_feature_schema(model_ref.artifact_key)
-            prediction_transform = str(schema.get("prediction_transform", "")).strip()
+            try:
+                validate_feature_schema(schema)
+            except ValueError as exc:
+                raise ModelNotReadyError("Unsupported or legacy feature schema") from exc
 
             return SklearnPredictor.from_bytes(
                 model_version=model_ref.model_version,
                 data=data,
-                prediction_transform=prediction_transform,
+                feature_schema=schema,
             )
 
     def get_active_metrics(self) -> dict[str, Any]:

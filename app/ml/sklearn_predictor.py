@@ -1,74 +1,32 @@
-from datetime import date
 from io import BytesIO
 from typing import Any
 
 import joblib
 import numpy as np
-import pandas as pd
 
+from app.features import transform_features, validate_feature_schema
 from app.ml.base import Predictor
 from app.schemas import EstimationFeatures
 
 
 class SklearnPredictor(Predictor):
-    def __init__(
-        self,
-        model_version: str,
-        pipeline: Any,
-        prediction_transform: str | None = None,
-    ):
+    def __init__(self, model_version: str, pipeline: Any, feature_schema: dict[str, Any]):
+        validate_feature_schema(feature_schema)
         self.model_version = model_version
         self._pipeline = pipeline
-        self._prediction_transform = prediction_transform
+        self._schema = dict(feature_schema)
 
     @classmethod
     def from_bytes(
-        cls,
-        model_version: str,
-        data: bytes,
-        prediction_transform: str | None = None,
+        cls, model_version: str, data: bytes, feature_schema: dict[str, Any]
     ) -> "SklearnPredictor":
-        pipeline = joblib.load(BytesIO(data))
-        return cls(
-            model_version=model_version,
-            pipeline=pipeline,
-            prediction_transform=prediction_transform,
-        )
+        # Validate before deserializing. Artifacts must still come from trusted storage.
+        validate_feature_schema(feature_schema)
+        return cls(model_version, joblib.load(BytesIO(data)), feature_schema)
 
     def predict_one(self, features: EstimationFeatures) -> int:
-        row = self._features_to_row(features)
-        df = pd.DataFrame([row])
-        y_pred = self._pipeline.predict(df)
-        pred = float(y_pred[0])
-        if self._prediction_transform == "expm1":
+        df = transform_features([features.model_dump(mode="json")], self._schema)
+        pred = float(self._pipeline.predict(df)[0])
+        if self._schema["prediction_transform"] == "expm1":
             pred = float(np.expm1(pred))
-
-        price = int(pred)
-        return max(price, 0)
-
-    @staticmethod
-    def _features_to_row(f: EstimationFeatures) -> dict[str, Any]:
-        total_area = float(f.total_area)
-        bra = float(f.bra)
-        area_ratio = bra / total_area if total_area > 0 else None
-
-        building_age = None
-        try:
-            building_age = date.today().year - int(f.built_year)
-        except Exception:
-            building_age = None
-
-        return {
-            "realestate_type": str(f.realestate_type.value),
-            "municipality_number": int(f.municipality_number),
-            "lat": float(f.lat),
-            "lon": float(f.lon),
-            "built_year": int(f.built_year),
-            "building_age": building_age,
-            "bra": bra,
-            "total_area": total_area,
-            "floor": f.floor,
-            "bedrooms": f.bedrooms,
-            "rooms": f.rooms,
-            "area_ratio": area_ratio,
-        }
+        return max(int(pred), 0)

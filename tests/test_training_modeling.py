@@ -8,6 +8,8 @@ pytestmark = pytest.mark.training
 def test_train_and_evaluate_smoke():
     data = [
         {
+            "id": 1,
+            "turnover_date": "2025-01-01",
             "price": 3_000_000,
             "realestate_type": "enebolig",
             "municipality_number": 301,
@@ -21,6 +23,8 @@ def test_train_and_evaluate_smoke():
             "rooms": 5,
         },
         {
+            "id": 1,
+            "turnover_date": "2025-01-01",
             "price": 4_000_000,
             "realestate_type": "leilighet",
             "municipality_number": 301,
@@ -34,6 +38,8 @@ def test_train_and_evaluate_smoke():
             "rooms": 3,
         },
         {
+            "id": 1,
+            "turnover_date": "2025-01-01",
             "price": 2_500_000,
             "realestate_type": "rekkehus",
             "municipality_number": 4003,
@@ -47,6 +53,8 @@ def test_train_and_evaluate_smoke():
             "rooms": 4,
         },
         {
+            "id": 1,
+            "turnover_date": "2025-01-01",
             "price": 5_500_000,
             "realestate_type": "tomannsbolig",
             "municipality_number": 5001,
@@ -60,6 +68,8 @@ def test_train_and_evaluate_smoke():
             "rooms": 6,
         },
         {
+            "id": 1,
+            "turnover_date": "2025-01-01",
             "price": 1_800_000,
             "realestate_type": "hytte",
             "municipality_number": 4223,
@@ -76,7 +86,7 @@ def test_train_and_evaluate_smoke():
 
     rows = data * 20
 
-    res = train_and_evaluate(rows)
+    res = train_and_evaluate(rows, reference_year=2025)
     assert "overall" in res.metrics
     assert "mae" in res.metrics["overall"]
     assert res.feature_schema["label"] == "price"
