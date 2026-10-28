@@ -1,6 +1,7 @@
 import argparse
 from datetime import date
 
+from app.celery_app import validate_rolling_backend
 from app.tasks.rolling import trigger_rolling_12m
 
 DATE_FORMAT = "%Y-%m-%d"
@@ -49,6 +50,7 @@ def main() -> None:
 
     as_of = args.as_of.isoformat() if args.as_of else None
 
+    validate_rolling_backend(trigger_rolling_12m.app)
     res = trigger_rolling_12m.delay(
         as_of=as_of,
         force_fetch=bool(args.force_fetch),
