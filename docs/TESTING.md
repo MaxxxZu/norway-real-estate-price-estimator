@@ -67,8 +67,8 @@ The result backend default and public example now use
 are not migrated: set `REE_CELERY_RESULT_BACKEND` explicitly to Redis for rolling
 workers/producers. Install the new lockfile. Compose provides Redis on port 6379
 and RabbitMQ on port 5672 for host-run workers. For workers in containers, use
-the service hostname `redis` instead of `localhost`. Existing Helm/deployment
-configuration is outside this slice; audit those overrides separately.
+the service hostname `redis` instead of `localhost`. Validate deployment-specific Helm/backend overrides separately before running
+training workers.
 
 ## Actual RabbitMQ/Redis chord integration
 
@@ -122,7 +122,8 @@ was absent after teardown and RabbitMQ reported no remaining queues.
 Cleanup used `docker compose ... down --volumes` against only the unique
 synthetic project: its two containers, two anonymous volumes and network were
 removed, and ports 5672/15672/6379 were free again. Images remain in Docker's
-cache. Local execution logs and exact run commands were retained for review.
+cache. The recorded outcome describes the local configuration used for this smoke.
 This is one successful transport smoke; prefork operation, retries/redelivery,
 broker/backend outages and real rolling ingestion/training/publication remain
-outside this evidence. Final stage acceptance requires independent review.
+outside this evidence. The smoke does not establish end-to-end training or
+production deployment readiness.

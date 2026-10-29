@@ -2,17 +2,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-import pandas as pd
 from catboost import CatBoostRegressor, Pool
-from sklearn.model_selection import train_test_split
 
 from app.features import CATEGORICAL_COLS, feature_schema, transform_features
-from app.training.dataset import build_trainable_dataset
 from app.training.metrics import compute_metrics
-
-TARGET_TRANSFORM = "log1p"
-PREDICTION_TRANSFORM = "expm1"
-MODEL_FAMILY = "CatBoostRegressor"
+from app.training.splitting import TemporalSplit, TemporalSplitConfig, split_rows
 
 
 @dataclass(frozen=True)
@@ -20,34 +14,43 @@ class TrainResult:
     pipeline: Any
     metrics: dict[str, Any]
     feature_schema: dict[str, Any]
+    lineage: dict[str, Any]
 
 
-def _metrics_by_group(df: pd.DataFrame, group_col: str) -> dict[str, dict[str, float]]:
-    out: dict[str, dict[str, float]] = {}
-    for key, g in df.groupby(group_col, dropna=False):
-        out[str(key)] = compute_metrics(
-            g["y_true"].to_numpy(dtype=float),
-            g["y_pred"].to_numpy(dtype=float),
-        )
-    return out
+def evaluate_model(model, rows, schema):
+    """Evaluate every row in caller order with this model's saved feature contract."""
+    features = transform_features(rows, schema)
+    predictions = np.expm1(np.asarray(model.predict(features), dtype=float))
+    return evaluate_predictions(rows, predictions)
 
 
-def train_and_evaluate(rows: list[dict[str, Any]], *, reference_year: int) -> TrainResult:
-    result = build_trainable_dataset(rows)
-    if result.dropped_reasons or not result.trainable_rows:
-        raise ValueError(f"Training requires normalized valid rows: {result.dropped_reasons}")
-    rows = result.trainable_rows
-    schema = feature_schema(reference_year)
-    X = transform_features(rows, schema)
-    y_log = np.log1p(pd.Series([row["price"] for row in rows], dtype=float))
+def evaluate_predictions(rows, predictions):
+    predictions = np.asarray(predictions, dtype=float)
+    if predictions.shape != (len(rows),) or not np.isfinite(predictions).all():
+        raise ValueError("Expected one finite prediction per evaluation row")
+    labels = np.array([row["price"] for row in rows], dtype=float)
+    segments = np.array([row["realestate_type"] for row in rows])
+    return {
+        "overall": compute_metrics(labels, predictions),
+        "by_realestate_type": {
+            segment: compute_metrics(labels[segments == segment], predictions[segments == segment])
+            for segment in sorted(set(segments))
+        },
+    }
 
-    X_train, X_test, y_train_log, y_test_log = train_test_split(
-        X, y_log, test_size=0.2, random_state=42, stratify=X["realestate_type"]
+
+def fit_model(split: TemporalSplit, schema):
+    train = transform_features(split.train, schema)
+    validation = transform_features(split.validation, schema)
+    if not any(train[column].nunique(dropna=False) > 1 for column in train.columns):
+        raise ValueError("CatBoost requires at least one varying train feature")
+    categorical = [train.columns.get_loc(col) for col in CATEGORICAL_COLS]
+    train_pool = Pool(
+        train, np.log1p([row["price"] for row in split.train]), cat_features=categorical
     )
-    cat_features = [X.columns.get_loc(c) for c in CATEGORICAL_COLS]
-    train_pool = Pool(X_train, y_train_log, cat_features=cat_features)
-    test_pool = Pool(X_test, y_test_log, cat_features=cat_features)
-
+    validation_pool = Pool(
+        validation, np.log1p([row["price"] for row in split.validation]), cat_features=categorical
+    )
     model = CatBoostRegressor(
         loss_function="RMSE",
         learning_rate=0.05,
@@ -59,29 +62,42 @@ def train_and_evaluate(rows: list[dict[str, Any]], *, reference_year: int) -> Tr
         od_wait=200,
         verbose=False,
     )
+    model.fit(train_pool, eval_set=validation_pool, use_best_model=True)
+    return model
 
-    model.fit(train_pool, eval_set=test_pool, use_best_model=True)
 
-    y_pred_log = model.predict(X_test)
-    y_true = np.expm1(y_test_log.to_numpy(dtype=float))
-    y_pred = np.expm1(np.array(y_pred_log, dtype=float))
-
-    eval_df = X_test.copy()
-    eval_df["y_true"] = y_true
-    eval_df["y_pred"] = y_pred
-    eval_df["realestate_type"] = X_test["realestate_type"].astype(str).values
-
-    overall = compute_metrics(eval_df["y_true"].to_numpy(), eval_df["y_pred"].to_numpy())
-    by_type = _metrics_by_group(eval_df, "realestate_type")
-
-    metrics = {
-        "overall": overall,
-        "by_realestate_type": by_type,
-        "n_train": int(len(X_train)),
-        "n_test": int(len(X_test)),
-        "target_transform": TARGET_TRANSFORM,
-        "prediction_transform": PREDICTION_TRANSFORM,
-        "model_family": MODEL_FAMILY,
+def baseline_metrics(split):
+    global_median = float(np.median([row["price"] for row in split.train]))
+    medians = {
+        segment: float(
+            np.median([row["price"] for row in split.train if row["realestate_type"] == segment])
+        )
+        for segment in {row["realestate_type"] for row in split.train}
+    }
+    predictions = [medians.get(row["realestate_type"], global_median) for row in split.test]
+    return {
+        "kind": "train_segment_median",
+        "global_median": global_median,
+        "segment_medians": medians,
+        **evaluate_predictions(split.test, predictions),
     }
 
-    return TrainResult(pipeline=model, metrics=metrics, feature_schema=schema)
+
+def train_and_evaluate(
+    rows, *, reference_year: int, split_config: TemporalSplitConfig, dataset_identity=None
+) -> TrainResult:
+    split = split_rows(rows, split_config, dataset_identity)
+    schema = feature_schema(reference_year)
+    model = fit_model(split, schema)
+    metrics = {
+        **evaluate_model(model, split.test, schema),
+        "n_train": len(split.train),
+        "n_validation": len(split.validation),
+        "n_test": len(split.test),
+        "target_transform": "log1p",
+        "prediction_transform": "expm1",
+        "model_family": "CatBoostRegressor",
+        "evaluation": split.metadata["partitions"]["test"],
+        "baseline": baseline_metrics(split),
+    }
+    return TrainResult(model, metrics, schema, split.metadata)

@@ -3,6 +3,7 @@ from typing import Any
 
 from app.clients.api_client import ApiClient
 from app.storage.s3 import S3Storage
+from app.training.comparison import compare_with_champion
 from app.training.dataset import DatasetBuildResult, build_trainable_dataset
 from app.training.fetch import (
     FetchConfig,
@@ -15,7 +16,6 @@ from app.training.fetch import (
 from app.training.gating import evaluate_publish_gate
 from app.training.modeling import train_and_evaluate
 from app.training.publish import (
-    try_load_previous_metrics,
     update_latest_json,
     upload_model_artifacts,
 )
@@ -26,6 +26,7 @@ from app.training.snapshots import (
     load_trainable_rows_from_parquet,
     upload_snapshots,
 )
+from app.training.splitting import TemporalSplitConfig, split_rows
 from app.training.versioning import make_model_version
 
 
@@ -46,6 +47,7 @@ class Pipeline:
         self.publish = publish
         self.force_fetch = force_fetch
         self._validate_params()
+        self.split_config = TemporalSplitConfig.from_settings() if train else None
         self.storage = S3Storage()
         self.api_client = ApiClient()
         self.cfg = FetchConfig()
@@ -163,9 +165,13 @@ class Pipeline:
         train_result = train_and_evaluate(
             trainable_rows,
             reference_year=date.fromisoformat(self.manifest["period"]["end_date"]).year,
+            split_config=self.split_config,
+            dataset_identity={"manifest_key": self.paths.manifest_key, "manifest": self.manifest},
         )
 
+        self.evaluation_rows = split_rows(trainable_rows, self.split_config).test
         self.result["metrics"] = train_result.metrics
+        self.result["lineage"] = train_result.lineage
 
         return train_result
 
@@ -175,11 +181,19 @@ class Pipeline:
 
         model_version = make_model_version()
         snapshot_prefix = self.paths.prefix
-        prev_metrics = try_load_previous_metrics(self.storage)
+        comparison = compare_with_champion(
+            self.storage,
+            train_result.pipeline,
+            train_result.feature_schema,
+            train_result.lineage,
+            self.evaluation_rows,
+        )
+        self.result["comparison"] = comparison
         gate = evaluate_publish_gate(
             rows_trainable=int(self.manifest["counts"]["rows_trainable"]),
             new_metrics=train_result.metrics,
-            prev_metrics=prev_metrics,
+            prev_metrics=None,
+            comparison=comparison,
         )
 
         training_manifest = {
@@ -189,6 +203,8 @@ class Pipeline:
             "counts": self.manifest["counts"],
             "dropped_reasons": self.manifest["dropped_reasons"],
             "metrics": train_result.metrics,
+            "lineage": train_result.lineage,
+            "comparison": comparison,
             "gating": {
                 "passed": gate.passed,
                 "reasons": gate.reasons,

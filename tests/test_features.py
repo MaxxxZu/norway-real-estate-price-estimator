@@ -11,8 +11,8 @@ from app.features import feature_schema, transform_features, validate_feature_sc
 from app.ml.registry import ModelNotReadyError, ModelRegistry
 from app.ml.sklearn_predictor import SklearnPredictor
 from app.schemas import EstimationFeatures
-from app.training.dataset import build_trainable_dataset
 from tests.test_rolling_chain import row
+from tests.test_temporal_evaluation import config, synthetic_rows
 
 
 class SpyModel:
@@ -32,17 +32,17 @@ def test_training_and_inference_feature_parity_without_fit(monkeypatch):
 
     monkeypatch.setattr(modeling, "CatBoostRegressor", SpyModel)
     monkeypatch.setattr(modeling, "Pool", lambda data, *args, **kwargs: data)
-    rows = build_trainable_dataset([row(id=i + 1) for i in range(10)]).trainable_rows
-    trained = modeling.train_and_evaluate(rows, reference_year=2025)
+    rows = synthetic_rows()
+    trained = modeling.train_and_evaluate(rows, reference_year=2025, split_config=config())
     predictor = SklearnPredictor("v1", trained.pipeline, trained.feature_schema)
     predictor.predict_one(EstimationFeatures.model_validate(rows[0]))
     training_frame = trained.pipeline.train_frame.reset_index(drop=True)
     inference_frame = trained.pipeline.frames[-1]
     pd.testing.assert_frame_equal(training_frame.iloc[:1], inference_frame)
     assert inference_frame["municipality_number"].iloc[0] == "301"
-    assert inference_frame["building_age"].iloc[0] == 25
+    assert inference_frame["building_age"].iloc[0] == 45
     assert inference_frame["rooms"].dtype == np.dtype("float64")
-    assert inference_frame["rooms"].isna().all()
+    assert inference_frame["rooms"].iloc[0] == 2
 
 
 def test_saved_model_schema_independent_of_system_date(monkeypatch):

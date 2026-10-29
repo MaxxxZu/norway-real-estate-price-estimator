@@ -1,355 +1,204 @@
 # Norway Real Estate Price Estimator
 
 [![Test](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/ci.yml/badge.svg)](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/ci.yml)
-[![Release](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/docker-build.yml/badge.svg)](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/docker-build.yml)
+[![Release workflow](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/docker-build.yml/badge.svg)](https://github.com/MaxxxZu/norway-real-estate-price-estimator/actions/workflows/docker-build.yml)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-**Production-grade AI / MLOps project** for estimating **current market prices** of residential real estate in Norway based on historical transaction data.
+A Python backend and applied ML project for estimating Norwegian property prices
+from transaction data. It combines a FastAPI inference service, CatBoost training,
+Celery orchestration and an S3-compatible artifact registry.
 
-The project demonstrates a **full end-to-end AI system**:
+The engineering focus is on reproducible data, shared training/serving features,
+temporal evaluation and traceable model selection.
 
-> data ingestion → feature engineering → model training → quality gating → model registry → inference API → Kubernetes → CI/CD
+## Project status
 
-This repository is intentionally built as a **realistic production-like system**, not a toy ML notebook.
+This is a production-oriented portfolio project under active development.
+It is not presented as a production-ready valuation service or independently
+validated source of current market prices.
 
----
+| Area | Current implementation and evidence |
+| --- | --- |
+| Backend | FastAPI contracts, validation, health/readiness and model-version responses; offline tests |
+| Data | Normalized rows, immutable snapshot revisions, semantic fingerprints and source lineage; in-memory storage tests |
+| Features | Shared versioned transformer and a persisted reference year; training/inference parity tests |
+| Evaluation | Explicit temporal train/validation/test, validation-only early stopping, train-only baseline and paired comparison; synthetic spy-model tests |
+| Background processing | Explicit task registration and Redis backend validation; one real RabbitMQ/Redis chord smoke with a separate solo worker |
+| Infrastructure | Docker, Compose, Helm and GKE workflow files are included; current cluster/provider deployment is not verified by the tests above |
 
-## 🚀 What this project does
+Synthetic tests verify contracts and orchestration, not real-world model accuracy.
+The historical model report at the end uses an older evaluation protocol.
+No new real-data accuracy results are claimed for the temporal implementation.
 
-- Fetches real real-estate transactions from an external API
-- Builds validated, reproducible training datasets
-- Trains ML models for price estimation
-- Computes rich quality metrics (absolute & relative)
-- Applies **quality gating** before publishing models
-- Stores immutable artifacts in object storage (S3 compatible)
-- Serves predictions via FastAPI
-- Retrains models automatically on a schedule (Kubernetes CronJob, rolling 12-month window)
-- Deploys to Kubernetes via Helm (kind / GKE)
-- Supports full CI/CD via GitHub Actions
+## Architecture
 
----
-
-## 🧱 High-level architecture
 ```mermaid
 flowchart LR
-    subgraph External
-        EXT_API[External Real Estate API]
-    end
-
-    subgraph Training["Training (Kubernetes CronJob)"]
-        FETCH[Fetch monthly data]
-        MERGE[Merge & deduplicate<br/>rolling 12m]
-        DATASET[Dataset + Manifest]
-        TRAIN[Train Model]
-        EVAL[Compute metrics]
-        GATE[Quality gating]
-        PUBLISH[Publish model]
-    end
-
-    subgraph Storage["Object Storage (S3 compatible)"]
-        SNAP[Snapshots]
-        REG[Model registry + models]
-    end
-
-    subgraph API["Inference (FastAPI)"]
-        READY[/ready/]
-        EST[/estimate/]
-        METRICS[/metrics/]
-        PROM[/metrics/prometheus/]
-        REGISTRY[ModelRegistry - cached]
-        PRED[SklearnPredictor]
-    end
-
-    EXT_API --> FETCH
-    CRON --> CHORD
-    CHORD --> FETCH
-    FETCH --> MERGE
-    MERGE --> DATASET
-    DATASET --> TRAIN
-    TRAIN --> GATE
-    GATE -->|pass| PUBLISH
-    DATASET --> SNAPSHOTS
-    PUBLISH --> MODELS
-
-    MODELS --> REGISTRY
-    REGISTRY --> PREDICT
-    PREDICT --> FASTAPI
+    SOURCE[External transaction API] --> FETCH[Monthly ingestion]
+    CRON[Optional CronJob trigger] --> CELERY[Celery chord: RabbitMQ + Redis]
+    CELERY --> FETCH
+    FETCH --> RAW[Versioned source snapshots]
+    RAW --> MERGE[Merge and deduplicate]
+    MERGE --> DATA[Normalized dataset + manifest]
+    DATA --> SPLIT[Temporal train / validation / test]
+    SPLIT --> TRAIN[CatBoost: train + validation]
+    TRAIN --> EVAL[Common holdout evaluation]
+    SPLIT --> EVAL
+    CURRENT[Champion artifacts + exposure lineage] --> EVAL
+    EVAL --> GATE[Promotion gate]
+    GATE -->|accepted| REGISTRY[S3-compatible model registry]
+    REGISTRY --> CACHE[ModelRegistry + predictor]
+    CACHE --> API[FastAPI inference]
 ```
 
-## 🔁 Inference request flow
+Snapshots have immutable revision paths. The model registry stores versioned
+artifacts and a mutable `latest.json` pointer; storage-enforced model immutability
+and concurrency-safe promotion are not established yet.
 
-```mermaid
-sequenceDiagram
-  participant Client
-  participant API as FastAPI
-  participant Reg as ModelRegistry
-  participant S3 as Object Storage
-  participant Pred as Predictor
+## Components
 
-  Client->>API: POST /estimate (batch)
-  API->>Reg: get_predictor() (cached with TTL)
-  alt cache miss
-    Reg->>S3: GET latest.json
-    Reg->>S3: GET models/<ver>/model.pkl
-    Reg->>S3: GET models/<ver>/feature_schema.json
-  end
-  Reg-->>API: Predictor
-  API->>Pred: predict(batch)
-  Pred-->>API: prices
-  API-->>Client: 200 OK (or 422 / 503)
-```
+- **Ingestion:** fetch transactions, resolve property features and normalize rows.
+- **Datasets:** retain source rows, write normalized Parquet and completion
+  manifests, and track exact source revisions and semantic fingerprints.
+- **Training:** CatBoostRegressor on `log1p(price)` with `expm1` for predictions.
+  Shared features include location, property type, areas, building attributes,
+  area ratio and building age relative to the model's stored reference year.
+- **Evaluation:** calendar splits with property-overlap checks; MAE, RMSE, MAPE,
+  MdAPE, WAPE and AE_p90 overall and by property type. A train-only segment-median
+  baseline uses a global fallback for unseen segments.
+- **Comparison:** champion and challenger evaluate identical holdout rows using
+  their own saved feature schemas. Unknown or inconsistent exposure metadata
+  blocks comparison and automatic promotion.
+- **Serving:** FastAPI loads the active learned model from trusted object storage.
+  Current artifacts use joblib; only trusted publishers may write model artifacts.
+- **Observability:** structured application logs, request IDs and an HTTP
+  Prometheus metrics endpoint. Worker metric collection and broader failure
+  instrumentation still require additional work.
 
-## 📦 Core components
+Detailed contracts:
 
-### 1️⃣ Training pipeline
-Runs as a Kubernetes **CronJob** (and can be executed manually). Current mode is
-**rolling 12-month** training with monthly snapshot reuse and de-duplication.
+- [Datasets, features and snapshot revisions](docs/DATA_CONTRACTS.md)
+- [Temporal evaluation and model comparison](docs/TEMPORAL_EVALUATION.md)
+- [Tests, isolation and integration evidence](docs/TESTING.md)
 
-### Pipeline stages
+## API
 
-- Fetch transactions for a given period
-- Normalize and validate rows
-- Build a reproducible training dataset
-- Train a regression model
-- Evaluate metrics
-- Apply quality gating
-- Publish artifacts if gating passes
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Process liveness |
+| `GET /ready` | Availability of a loadable active model |
+| `POST /estimate` | Property-ID-to-features batch request; NOK estimates and model version |
+| `GET /metrics` | Model metrics read from the registry |
+| `GET /metrics/summary` | Formatted model-quality summary |
+| `GET /metrics/prometheus` | Prometheus text exposition for HTTP metrics |
 
-### Artifacts stored per training run
+Pydantic validates required features and cross-field constraints, including
+`total_area >= bra` and an explicit floor for apartments. Schema validation errors
+return 422. A missing or unsupported active model produces 503 through the
+readiness/predictor dependency. Unhandled artifact failures are not yet a fully
+hardened public error contract.
 
-- `rows_raw.jsonl` — fetched source rows (including rejected rows)
-- `dataset.parquet` — trainable dataset
-- `manifest.json` — versioned completion, fingerprints, source lineage and drop reasons
-- `model.pkl` — trained model
-- `metrics.json` — evaluation metrics
-- `feature_schema.json` — versioned shared features and fixed reference year
-- `latest.json` — pointer to the active model
+Prediction currently iterates over the batch. Authentication, rate/body/batch
+limits and stricter production CORS settings are not supplied as a complete
+public-access boundary. Keep the service local or behind an independently
+configured access boundary; no public hosted demo is claimed here.
 
----
+## Local development
 
-Snapshot revision paths, normalization, feature contracts and the owner-selected
-legacy rejection/transition policy are documented in [Data contracts](docs/DATA_CONTRACTS.md).
+Python 3.11 is the tested development version. Install `uv` separately.
+The following commands install dependencies and start only the API process;
+they do not fetch data, train a model or initialize the registry.
 
-### 2️⃣ Model Registry
-
-- Implemented on top of object storage
-- Each model version is immutable
-- `latest.json` points to the active production model
-- API refuses to serve predictions until a valid model exists
-- Registry is cached in-memory with TTL for performance
-
----
-
-### 3️⃣ Inference API (FastAPI)
-
-### Endpoints
-
-- `GET /health` — liveness probe
-- `GET /ready` — readiness probe (model loaded)
-- `POST /estimate` — batch price estimation
-- `GET /metrics` — raw model metrics
-- `GET /metrics/summary` — human-friendly quality report
-- `GET /metrics/prometheus` - Prometheus scrape
-
-### Design principles
-
-- Batch-first API (property_id → features)
-- Strict validation (“better no estimate than a wrong one”)
-- Invalid requests return HTTP 422 with FastAPI/Pydantic validation errors (list in `detail`)
-- Predictor logic isolated from HTTP layer
-- Explicit readiness based on model availability
-
----
-
-### 4️⃣ Storage
-
-* **Local / kind:** MinIO
-* **GKE:** Google Cloud Storage via S3 interoperability
-* Same code works in both environments
-
-> ⚠️ **Note:** boto3 uploads require `ContentLength` to avoid aws-chunked uploads when using GCS S3 compatibility.
----
-
-## 🧠 Machine Learning
-
-### Current approach
-
-- Model: `CatBoostRegressor`
-- Target: `log1p(price)` with inverse transform on inference
-- Handles categorical + numeric features natively
-- Stronger performance vs sklearn baseline
-- Sliding window: rolling 12-month window (monthly snapshots + merge)
-
-### Feature groups
-
-- Property size (`total_area`, `usable_area`)
-- Location (`lat`, `lon`, `municipality`)
-- Building metadata (`year built`, `floor`, `rooms`, `bedrooms`)
-- Real estate type
-- Derived ratios (e.g. area ratios)
-
-### Metrics used
-- **MAE** (NOK)
-- **RMSE** (NOK)
-- **MAPE / MdAPE** (relative error; robust vs outliers)
-- **AE_p90** (tail risk: 90th percentile absolute error)
-- **WAPE** (weighted absolute percentage error)
-
----
-
-
-## 📊 Model Quality & Metrics
-
-**GET `/metrics`** — raw metrics JSON from the model registry
-
-**GET `/metrics/summary`** — human-friendly summary (focus on realestate_type segments)
-
-### Includes
-
-- Overall metrics (MAE, RMSE, MdAPE, WAPE, AE_p90)
-- Metrics per `realestate_type`
-- Best / worst performing segments
-- Automatic risk flags
-- Tail-risk detection
-- Thresholds used for interpretation
-
-### Example usage
-
-```bash
-curl -s http://localhost:8000/metrics/summary | jq
-```
-This endpoint intentionally reads like a model evaluation report, not a raw ML dump.
-
----
-
-## 🚦 Quality Gating
-
-A newly trained model is published **only if**:
-- Minimum dataset size is met
-- Overall quality does not degrade beyond configured thresholds
-- Key segment (`enebolig`) does not regress excessively
-- Optional relative error metrics (MdAPE / WAPE) stay within bounds
-
-If gating fails → **previous model remains active**.
-
-This prevents silent production regressions.
-
----
-
-## 🔍 Observability
-
-### Logs
-- JSON structured logs (structlog)
-- Each request includes `request_id` (from `X-Request-Id` or auto-generated)
-
-### Prometheus metrics
-- `GET /metrics/prometheus` exposes OpenMetrics format:
-  - `http_requests_total`
-  - `http_request_duration_seconds`
-
----
-
-## ☸️ Kubernetes & Deployment
-
-- Helm chart located in `deploy/helm`
-- Environments
-    - `kind` — local development
-    - `GKE` — production-like cluster
-- Explicit CPU / memory requests & limits
-- Training runs as a `CronJob` that triggers rolling 12-month training
-- API runs as a `Deployment` with readiness probes
-- RabbitMQ and MinIO deployed as Helm releases
-
----
-
-## 🔄 CI/CD
-
-**Release flow:**
-
-1. Push git tag `vX.Y.Z`
-2. GitHub Actions:
-   * build Docker image
-   * push to GHCR
-   * deploy to GKE via Helm
-   * update Kubernetes secrets
-3. Rolling update with readiness checks
-
-## 🧪 Local development
-
-### Prerequisites
-
-- Docker
-- Python 3.11+
-- `uv`
-- `kind`
-- `kubectl`
-- `helm`
-- RabbitMQ (required for Celery tasks)
-- MinIO (optional, or use S3-compatible storage)
-
-### Run locally
-```bash
+```sh
+uv sync --locked
 cp .env.example .env
-uv lock
-make compose-up
-honcho start
-```
-## Open:
-- [Swagger](http://localhost:8080/docs)
-- [ReDoc](http://localhost:8080/redoc)
-- [Health](http://localhost:8080/health)
-
-
----
-
-## 🚢 Deploy to kind
-```bash
-kind create cluster --name ree
-kubectl cluster-info --context kind-ree
-
-TAG=dev-$(git rev-parse --short HEAD)
-docker build -t ree:$TAG -f deploy/Dockerfile .
-kind load docker-image ree:$TAG --name ree
-
-kubectl create namespace ree 2>/dev/null || true
-kubectl -n ree delete secret ree-secrets --ignore-not-found
-kubectl -n ree create secret generic ree-secrets --from-env-file=.env.kind
-
-helm upgrade --install ree deploy/helm -n ree -f deploy/helm/values_kind.yaml
-
-kubectl -n ree port-forward svc/ree-api 8000:80
-kubectl -n ree port-forward svc/ree-minio 9001:9001
+uv run --locked --no-sync uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-### Run initial training manually:
-```bash
-kubectl -n ree create job --from=cronjob/ree-training ree-training-manual
+Review the copied environment before use. Its local demo credentials are not
+suitable for an exposed deployment. The configured S3-compatible service must be
+reachable for model-dependent requests. For host-run processes, use reachable
+host endpoints rather than container-only service names.
+
+- [Swagger UI](http://localhost:8000/docs)
+- [ReDoc](http://localhost:8000/redoc)
+- [Health](http://localhost:8000/health)
+
+Before an active compatible model is available, `/ready` and `/estimate` are not
+expected to return successful predictions. `/health` is independent of model
+availability. Obtaining real data requires separate authorized access to the
+external API; it is not a prerequisite for the default offline tests.
+
+```sh
+uv run --locked --no-sync pytest
 ```
-### Trigger rolling training manually (outside CronJob):
-```bash
-uv run python -m scripts.rolling_12m --publish
-```
-### Note:
-- Use you k8s config, example: `KUBECONFIG=~/.kube/kind-config kubectl`
 
----
+The default suite uses synthetic configuration and blocks network connections and
+CatBoost fitting in the pytest process. Integration and fitting tests need
+explicit opt-in flags; see [Testing](docs/TESTING.md). These Python guards are not
+an operating-system sandbox for arbitrary subprocesses.
 
-## 🛣️ Roadmap (next steps)
-- Model v4 (feature engineering + calibration)
-- Richer geo features
-- Drift detection
-- Shadow evaluation
-- Online / offline metric comparison
+## Training and model lifecycle
 
----
+Both synchronous and Celery training require four explicit calendar settings:
+`REE_SPLIT_TRAIN_START`, `REE_SPLIT_VALIDATION_START`, `REE_SPLIT_TEST_START` and
+`REE_SPLIT_TEST_END`. No implicit production dates or random fallback are used.
+Rows outside the selected window and forbidden cross-partition property overlap
+cause preflight failure. See the temporal contract for exact interval semantics.
 
-## 📝 Notes
-This project is intentionally built as a production-like system, not just a notebook-to-API demo. The focus is on correctness, safety, and operability, not only on model accuracy.
+Rolling jobs reuse monthly source revisions, build a rolling dataset and pass
+explicit boundaries to training. RabbitMQ and Redis are required for the chord.
+A queued task ID confirms submission, not successful training or promotion.
 
----
+Automatic promotion currently requires a verifiable champion comparison, including
+consistent version references, complete lineage and an admissible common holdout.
+Bootstrap without a verifiable champion is blocked. Absolute quality thresholds,
+complete missing/finite-metric rules, retry-safe publication and concurrent pointer
+updates are not complete. Training and artifact creation do not establish that
+model activation is safe for production use.
 
-# 📊 Model Evaluation Report
+Unversioned snapshots and learned models without the supported feature schema are
+not silently migrated. Plan data rebuilding, retraining and activation separately;
+see the documented compatibility contracts before changing serving code.
+
+## Infrastructure and deployment boundary
+
+- `docker-compose.yml` describes RabbitMQ, Redis, MinIO and Prometheus services.
+- `deploy/Dockerfile` and `deploy/helm` contain container/cluster configurations.
+- The release workflow describes GHCR image publication and GKE deployment.
+- Supplied training schedule values are suspended by default.
+
+These files are reference configurations, not a currently verified turnkey
+installation recipe. Helm rendering/dependencies, reproducible image builds,
+worker readiness and cloud storage compatibility require their own checks.
+The GKE configuration targets GCS S3 interoperability; that target is not evidence
+that all storage operations or concurrency semantics match MinIO or AWS S3.
+The release badge links to workflow history, not a production-readiness guarantee.
+
+## Data, artifacts and licensing
+
+The source API requires separately configured access. This repository does not
+provide its credentials or a redistributable real-data training bundle. Historical
+features may reflect property state observed after a transaction; frozen snapshots
+alone do not establish point-in-time correctness.
+
+A code license has not yet been declared. Permission to redistribute source data
+or derived models is not established by access to the API or by this repository.
+Do not add real snapshots, model files, exports or private service details without
+checking their provenance and publication rights. Example/fixture provenance is
+not a substitute for a data license.
+
+## Historical evaluation archive
+
+<details>
+<summary>Earlier model results — superseded evaluation protocol, not current accuracy evidence</summary>
+
+The report below is retained as historical context. Its source evaluation
+artifacts are not included as a reproducible public bundle. It used a random
+split and test-driven early stopping; the figures must not be presented as
+independent temporal test performance. Segment labels and thresholds are the
+report's descriptive heuristics, not calibrated reliability guarantees.
+
 
 ## 🧠 Model Overview
 
@@ -364,6 +213,12 @@ This project is intentionally built as a production-like system, not just a note
 
 ## 📦 Dataset
 
+**Historical results below:** these counts and quality numbers use the former
+random split with test-driven early stopping. They are not evidence for the current
+temporal protocol or independent final quality claims. A promotion holdout is used
+for model selection; independent claims need a separate subsequent evaluation.
+Snapshots do not establish historical availability of external features.
+
 | Split | Records |
 |------|---------|
 | Train | 19,157 |
@@ -371,7 +226,7 @@ This project is intentionally built as a production-like system, not just a note
 
 ---
 
-## 📈 Overall Performance (Test Set)
+## 📈 Overall Performance (Historical Evaluation Set)
 
 | Metric | Value |
 |------|------|
@@ -424,3 +279,5 @@ This project is intentionally built as a production-like system, not just a note
 ## ⏱️ Metadata
 
 - **Generated at:** `2026-01-25T20:31:53Z`
+
+</details>
