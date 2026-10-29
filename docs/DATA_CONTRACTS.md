@@ -126,9 +126,9 @@ means equivalent canonical data, not identical Parquet bytes or model bytes.
 
 ## Compatibility and transition
 
-The owner explicitly selected rejection of legacy snapshots/models for new
-training/serving paths on 2026-10-28. There is no automatic migration, guessed
-reference year, calendar-dependent fallback, deletion or activation.
+The versioned training/serving readers reject unsupported legacy snapshots and
+model schemas. There is no automatic migration, guessed reference year,
+calendar-dependent fallback, deletion or activation.
 
 Legacy/unversioned snapshots cannot be reused by new readers. Fetching a new
 versioned snapshot is a separately authorized ingestion operation. Legacy
@@ -137,15 +137,14 @@ raise `ModelNotReadyError` in the registry. Existing stub artifacts retain their
 independent stub contract; they do not use this feature transformer.
 
 Deploying this reader with an active legacy learned model can make estimation
-unavailable. The owner must separately authorize rebuilding data, retraining,
-reviewing quality and activating a compatible model before switching serving
-code, or continue running the prior code with its prior artifacts until then.
-This implementation performs none of those operations. Never fabricate an old
-model's reference year by editing metadata. An owner-supplied-year compatibility
-adapter and a separate legacy serving path were considered and not selected.
+unavailable. Prepare compatible data and a retrained model, review its quality and plan
+activation before switching serving code; alternatively retain the previous
+code/artifact pair during the transition. Reader upgrades do not perform these
+operations automatically. Never fabricate an old model's reference year by
+editing metadata; no legacy compatibility adapter is provided.
 
 Snapshots preserve what was fetched, not what was historically observable on a
 transaction date. External features may reflect later property state. Historical
-feature availability and temporal evaluation remain research/implementation
-work for the following stage; no temporal leakage or quality claim is resolved
-merely by freezing a snapshot.
+feature availability needs separate evidence. The
+[temporal evaluation protocol](TEMPORAL_EVALUATION.md) separates data by date;
+neither it nor frozen snapshots reconstruct historical external feature values.

@@ -1,4 +1,5 @@
 import os
+from datetime import date
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,6 +38,12 @@ class Settings(BaseSettings):
     s3_bucket_snapshots: str = Field(default="ree-snapshots")
 
     model_registry_refresh_seconds: int = Field(default=60)
+
+    # Calendar intervals are [start, next boundary); no implicit training dates.
+    split_train_start: date | None = None
+    split_validation_start: date | None = None
+    split_test_start: date | None = None
+    split_test_end: date | None = None
 
     # Training publish gating
     train_min_rows: int = Field(default=500)

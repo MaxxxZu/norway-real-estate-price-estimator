@@ -62,12 +62,18 @@ def evaluate_publish_gate(
     rows_trainable: int,
     new_metrics: dict[str, Any],
     prev_metrics: dict[str, Any] | None,
+    comparison: dict[str, Any] | None = None,
 ) -> GateResult:
     reasons: list[str] = []
     details: dict[str, Any] = {
         "rows_trainable": rows_trainable,
         "min_rows_required": settings.train_min_rows,
-        "has_prev": prev_metrics is not None,
+        "has_prev": True if prev_metrics is not None else None,
+        "comparison_status": (
+            comparison.get("status", "unverifiable")
+            if isinstance(comparison, dict)
+            else "unverifiable"
+        ),
         "rules": {
             "overall_max_degrade_pct": settings.gate_overall_mae_max_degrade_pct,
             "overall_wape_max_degrade_pct": settings.gate_overall_wape_max_degrade_pct,
@@ -83,9 +89,19 @@ def evaluate_publish_gate(
         return GateResult(passed=False, reasons=reasons, details=details)
 
     details["checks"]["min_rows"] = {"status": "passed"}
-    if prev_metrics is None:
-        details["checks"]["comparison"] = {"status": "passed_no_prev"}
-        return GateResult(passed=True, reasons=[], details=details)
+    if (
+        not isinstance(comparison, dict)
+        or comparison.get("status") != "verified"
+        or not isinstance(comparison.get("champion_metrics"), dict)
+        or not isinstance(comparison.get("challenger_metrics"), dict)
+        or not isinstance(comparison.get("evaluation"), dict)
+    ):
+        return GateResult(False, ["unverifiable_comparison"], details)
+    new_metrics = comparison["challenger_metrics"]
+    prev_metrics = comparison["champion_metrics"]
+    details["evaluation"] = comparison["evaluation"]
+    details["champion_reference"] = comparison.get("champion_reference")
+    details["has_prev"] = True
 
     checks: dict[str, Any] = {}
     _check_degradation(

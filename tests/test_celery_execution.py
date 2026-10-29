@@ -148,7 +148,15 @@ def test_rolling_backend_requires_results():
     ],
 )
 def test_effective_backend_overrides_in_fresh_process(entrypoint, ree_backend, override, accepted):
-    env = dict(os.environ, REE_CELERY_RESULT_BACKEND=ree_backend, CELERY_RESULT_BACKEND=override)
+    env = dict(
+        os.environ,
+        REE_CELERY_RESULT_BACKEND=ree_backend,
+        CELERY_RESULT_BACKEND=override,
+        REE_SPLIT_TRAIN_START="2025-01-01",
+        REE_SPLIT_VALIDATION_START="2025-03-01",
+        REE_SPLIT_TEST_START="2025-05-01",
+        REE_SPLIT_TEST_END="2025-07-01",
+    )
     script = """
 import os
 import socket

@@ -1,7 +1,7 @@
 [project]
 name = "norway-real-estate-price-estimator"
 version = "1.0.0"
-description = "Production-grade AI system for current real estate price estimation in Norway"
+description = "Python backend and applied ML project for Norwegian property price estimation"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Maksym Zyultsle" }]

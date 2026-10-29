@@ -21,16 +21,17 @@ from app.observability.prometheus import (
     TRAINING_STEP_DURATION_SECONDS,
 )
 from app.storage.s3 import S3Storage
+from app.training.comparison import compare_with_champion
 from app.training.fetch import FetchConfig
 from app.training.gating import evaluate_publish_gate
 from app.training.modeling import train_and_evaluate
 from app.training.publish import (
-    try_load_previous_metrics,
     update_latest_json,
     upload_model_artifacts_from_bytes,
 )
 from app.training.rolling import build_rolling_snapshot, ensure_month_snapshot, month_ranges
 from app.training.snapshots import RawSnapshotPaths, load_trainable_rows_from_parquet
+from app.training.splitting import TemporalSplitConfig, split_rows
 from app.training.versioning import make_model_version
 
 
@@ -130,20 +131,36 @@ def merge_rolling_12m(
     base=TrainingLongTask,
     retry_kwargs={"max_retries": 2},
 )
-def train_rolling_12m(ctx: dict, train: bool = True) -> dict:
+def train_rolling_12m(ctx: dict, train: bool = True, split_config: dict | None = None) -> dict:
     started = time.perf_counter()
     try:
         if not train:
             ctx["train"] = {"skipped": True}
             return ctx
 
+        config = (
+            TemporalSplitConfig(
+                **{key: date.fromisoformat(value) for key, value in split_config.items()}
+            )
+            if split_config
+            else TemporalSplitConfig.from_settings()
+        )
         storage = S3Storage()
         trainable_rows = load_trainable_rows_from_parquet(storage, ctx["dataset_key"])
         train_result = train_and_evaluate(
             trainable_rows,
             reference_year=date.fromisoformat(ctx["manifest"]["period"]["end_date"]).year,
+            split_config=config,
+            dataset_identity={"manifest_key": ctx["manifest_key"], "manifest": ctx["manifest"]},
         )
 
+        comparison = compare_with_champion(
+            storage,
+            train_result.pipeline,
+            train_result.feature_schema,
+            train_result.lineage,
+            split_rows(trainable_rows, config).test,
+        )
         bio = BytesIO()
         joblib.dump(train_result.pipeline, bio)
         tmp_model_key = f"{ctx['snapshot_prefix']}/model_tmp.pkl"
@@ -156,6 +173,8 @@ def train_rolling_12m(ctx: dict, train: bool = True) -> dict:
 
         ctx["train"] = {
             "metrics": train_result.metrics,
+            "lineage": train_result.lineage,
+            "comparison": comparison,
             "feature_schema": train_result.feature_schema,
             "tmp_model_key": tmp_model_key,
         }
@@ -174,16 +193,16 @@ def train_rolling_12m(ctx: dict, train: bool = True) -> dict:
 def gate_rolling_12m(ctx: dict) -> dict:
     started = time.perf_counter()
     try:
-        storage = S3Storage()
         manifest = ctx.get("manifest") or {}
         counts = manifest.get("counts") or {}
         rows_trainable = int(counts.get("rows_trainable", 0))
         metrics = ctx.get("train", {}).get("metrics") or {}
-        prev_metrics = try_load_previous_metrics(storage)
+        comparison = ctx.get("train", {}).get("comparison")
         gate = evaluate_publish_gate(
             rows_trainable=rows_trainable,
             new_metrics=metrics,
-            prev_metrics=prev_metrics,
+            prev_metrics=None,
+            comparison=comparison,
         )
         ctx["gating"] = {
             "passed": gate.passed,
@@ -244,6 +263,8 @@ def publish_rolling_12m(ctx: dict, publish: bool = True) -> dict:
             "counts": manifest.get("counts"),
             "dropped_reasons": manifest.get("dropped_reasons"),
             "metrics": train.get("metrics"),
+            "lineage": train.get("lineage"),
+            "comparison": train.get("comparison"),
             "gating": gating,
         }
 
@@ -307,6 +328,7 @@ def trigger_rolling_12m(
     months: int = 12,
 ) -> dict:
     validate_rolling_backend(self.app)
+    config = TemporalSplitConfig.from_settings().as_dict() if train else None
     as_of_date = date.fromisoformat(as_of) if as_of else date.today()
     ranges = month_ranges(as_of_date, months=months)
 
@@ -322,7 +344,7 @@ def trigger_rolling_12m(
             months=months,
             started_at=time.time(),
         )
-        | train_rolling_12m.s(train=bool(train))
+        | train_rolling_12m.s(train=bool(train), split_config=config)
         | gate_rolling_12m.s()
         | publish_rolling_12m.s(publish=bool(publish and train))
     )
