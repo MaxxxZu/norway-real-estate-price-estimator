@@ -12,6 +12,12 @@ class S3StorageError(RuntimeError):
     pass
 
 
+class S3ObjectNotFound(S3StorageError):
+    """The provider explicitly reported an absent object key."""
+
+    pass
+
+
 cfg = Config(
     signature_version="s3v4",
     request_checksum_calculation="when_required",
@@ -47,7 +53,11 @@ class S3Storage:
             resp = self._client.get_object(Bucket=bucket, Key=key)
             body = resp["Body"].read()
             return body
-        except (ClientError, BotoCoreError) as e:
+        except ClientError as e:
+            if str(e.response.get("Error", {}).get("Code", "")) == "NoSuchKey":
+                raise S3ObjectNotFound("Object not found") from e
+            raise S3StorageError(f"Failed to get s3://{bucket}/{key}") from e
+        except BotoCoreError as e:
             raise S3StorageError(f"Failed to get s3://{bucket}/{key}") from e
 
     def put_bytes(

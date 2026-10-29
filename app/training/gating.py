@@ -1,7 +1,14 @@
+"""Fail-closed promotion decisions over explicitly configured evidence."""
+
+import hashlib
+import json
+import math
 from dataclasses import dataclass
 from typing import Any
 
 from app.config import settings
+from app.features import validate_feature_schema
+from app.training.comparison import validate_lineage
 
 
 @dataclass(frozen=True)
@@ -11,152 +18,194 @@ class GateResult:
     details: dict[str, Any]
 
 
-def _get_metric(metrics: dict[str, Any], path: list[str]) -> float | None:
-    cur: Any = metrics
-    for key in path:
-        if not isinstance(cur, dict) or key not in cur:
-            return None
-        cur = cur[key]
+def _number(value):
     try:
-        return float(cur)
-    except (TypeError, ValueError):
-        return None
+        return type(value) in (int, float) and math.isfinite(value) and value >= 0
+    except OverflowError:
+        return False
 
 
-def _pct_change(new: float, prev: float) -> float:
-    if prev == 0:
-        return float("inf") if new > 0 else 0.0
-    return (new - prev) / prev
-
-
-def _check_degradation(
-    *,
-    name: str,
-    new_val: float | None,
-    prev_val: float | None,
-    max_degrade_pct: float,
-    reasons: list[str],
-    checks: dict[str, Any],
-) -> None:
-    checks[name] = {
-        "new": new_val,
-        "prev": prev_val,
-        "max_degrade_pct": max_degrade_pct,
-    }
-    if new_val is None or prev_val is None:
-        checks[name]["status"] = "missing_metric"
-        return
-
-    degrade = _pct_change(new_val, prev_val)
-    checks[name]["degrade_pct"] = degrade
-
-    if degrade > max_degrade_pct:
-        reasons.append(f"degraded:{name}:{degrade:.3f} > {max_degrade_pct:.3f}")
-        checks[name]["status"] = "failed"
-    else:
-        checks[name]["status"] = "passed"
+def _policy(raw):
+    if not isinstance(raw, str) or not raw:
+        raise ValueError
+    obj = json.loads(raw)
+    if not isinstance(obj, dict) or set(obj) != {
+        "version",
+        "bootstrap",
+        "min_trainable",
+        "min_evaluation",
+        "segments",
+        "metrics",
+    }:
+        raise ValueError
+    if (
+        type(obj["version"]) is not int
+        or obj["version"] != 1
+        or type(obj["bootstrap"]) is not bool
+    ):
+        raise ValueError
+    for key in ("min_trainable", "min_evaluation"):
+        if type(obj[key]) is not int or obj[key] < 1:
+            raise ValueError
+    if not isinstance(obj["segments"], dict) or not obj["segments"]:
+        raise ValueError
+    if any(
+        not isinstance(k, str) or not k or type(v) is not int or v < 1
+        for k, v in obj["segments"].items()
+    ):
+        raise ValueError
+    metrics = obj["metrics"]
+    if not isinstance(metrics, dict) or set(metrics) != {"mdape", "ae_p90", "wape"}:
+        raise ValueError
+    for rule in metrics.values():
+        if not isinstance(rule, dict) or set(rule) != {"max", "max_degradation"}:
+            raise ValueError
+        if not all(_number(rule[k]) for k in rule) or rule["max_degradation"] > 1:
+            raise ValueError
+    return obj
 
 
 def evaluate_publish_gate(
-    *,
-    rows_trainable: int,
-    new_metrics: dict[str, Any],
-    prev_metrics: dict[str, Any] | None,
-    comparison: dict[str, Any] | None = None,
-) -> GateResult:
-    reasons: list[str] = []
-    details: dict[str, Any] = {
-        "rows_trainable": rows_trainable,
-        "min_rows_required": settings.train_min_rows,
-        "has_prev": True if prev_metrics is not None else None,
-        "comparison_status": (
-            comparison.get("status", "unverifiable")
-            if isinstance(comparison, dict)
-            else "unverifiable"
-        ),
-        "rules": {
-            "overall_max_degrade_pct": settings.gate_overall_mae_max_degrade_pct,
-            "overall_wape_max_degrade_pct": settings.gate_overall_wape_max_degrade_pct,
-            "enebolig_max_degrade_pct": settings.gate_enebolig_mae_max_degrade_pct,
-            "enebolig_wape_max_degrade_pct": settings.gate_enebolig_wape_max_degrade_pct,
-        },
-        "checks": {},
-    }
+    *, rows_trainable, new_metrics, prev_metrics=None, comparison=None, lineage=None, policy=None
+):
+    reasons = []
+    details = {"checks": {}}
+    try:
+        p = _policy(settings.promotion_policy if policy is None else policy)
+    except (ValueError, TypeError, json.JSONDecodeError, OverflowError):
+        return GateResult(False, ["policy_unconfigured_or_invalid"], details)
+    details["policy"] = p
+    details["policy_id"] = hashlib.sha256(
+        json.dumps(p, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
+    if type(rows_trainable) is int and 0 <= rows_trainable <= 2**63 - 1:
+        details["trainable_count"] = rows_trainable
+    valid_trainable_count = type(rows_trainable) is int and 0 <= rows_trainable <= 2**63 - 1
+    if not valid_trainable_count:
+        reasons.append("insufficient_trainable_count")
+    try:
+        validate_lineage(lineage)
+        partitions = lineage["partitions"]
+        dataset_count = sum(partitions[name]["count"] for name in ("train", "validation", "test"))
+        details["lineage_trainable_count"] = dataset_count
+        if valid_trainable_count and rows_trainable != dataset_count:
+            reasons.append("trainable_count_mismatch")
+        elif valid_trainable_count and dataset_count < p["min_trainable"]:
+            reasons.append("insufficient_trainable_count")
+        evaluation = partitions["test"]
+        if (
+            not isinstance(new_metrics, dict)
+            or new_metrics.get("evaluation") != evaluation
+            or type(new_metrics.get("n_test")) is not int
+            or new_metrics.get("n_test") != evaluation["count"]
+        ):
+            raise ValueError
+        details["evaluation_count"] = evaluation["count"]
+        details["segment_counts"] = {
+            name: evaluation["segments"].get(name, 0) for name in p["segments"]
+        }
+        if evaluation["count"] < p["min_evaluation"]:
+            reasons.append("insufficient_evaluation_count")
+        for segment, minimum in p["segments"].items():
+            if evaluation["segments"].get(segment, 0) < minimum:
+                reasons.append("insufficient_segment_count")
+        details["evaluation_id"] = evaluation["fingerprint"]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return GateResult(
+            False, list(dict.fromkeys(reasons + ["invalid_evaluation_evidence"])), details
+        )
 
-    if rows_trainable < settings.train_min_rows:
-        reasons.append("insufficient_rows_trainable")
-        details["checks"]["min_rows"] = {"status": "failed"}
-        return GateResult(passed=False, reasons=reasons, details=details)
+    bootstrap = isinstance(comparison, dict) and comparison.get("status") == "no_active_pointer"
+    if bootstrap:
+        if not p["bootstrap"]:
+            reasons.append("bootstrap_disabled")
+    elif not isinstance(comparison, dict) or comparison.get("status") != "verified":
+        reasons.append("unverifiable_comparison")
+    else:
+        order = comparison.get("evaluation_order")
+        if (
+            comparison.get("evaluation") != evaluation
+            or not isinstance(order, list)
+            or len(order) != evaluation["count"]
+            or any(
+                not isinstance(x, str)
+                or len(x) != 64
+                or any(c not in "0123456789abcdef" for c in x)
+                for x in order
+            )
+            or sorted(order) != sorted(m["row_hash"] for m in evaluation["membership"])
+            or not isinstance(comparison.get("feature_schemas"), dict)
+            or not isinstance(comparison.get("champion_lineage_fingerprint"), str)
+            or not isinstance(comparison.get("champion_reference"), dict)
+            or not isinstance(comparison.get("champion_metrics"), dict)
+            or not isinstance(comparison.get("challenger_metrics"), dict)
+            or any(
+                comparison["challenger_metrics"].get(k) != new_metrics.get(k)
+                for k in ("overall", "by_realestate_type")
+            )
+        ):
+            reasons.append("invalid_comparison_evidence")
+        else:
+            try:
+                schemas = comparison["feature_schemas"]
+                validate_feature_schema(schemas["champion"])
+                validate_feature_schema(schemas["challenger"])
+                fp = comparison["champion_lineage_fingerprint"]
+                if len(fp) != 64 or any(c not in "0123456789abcdef" for c in fp):
+                    raise ValueError
+                ref = comparison["champion_reference"]
+                version = ref["model_version"]
+                import re
 
-    details["checks"]["min_rows"] = {"status": "passed"}
-    if (
-        not isinstance(comparison, dict)
-        or comparison.get("status") != "verified"
-        or not isinstance(comparison.get("champion_metrics"), dict)
-        or not isinstance(comparison.get("challenger_metrics"), dict)
-        or not isinstance(comparison.get("evaluation"), dict)
-    ):
-        return GateResult(False, ["unverifiable_comparison"], details)
-    new_metrics = comparison["challenger_metrics"]
-    prev_metrics = comparison["champion_metrics"]
-    details["evaluation"] = comparison["evaluation"]
-    details["champion_reference"] = comparison.get("champion_reference")
-    details["has_prev"] = True
+                if (
+                    not isinstance(version, str)
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", version)
+                    or ref.get("type") != "sklearn"
+                    or ref.get("artifact_key") != f"models/{version}/model.pkl"
+                ):
+                    raise ValueError
+            except (ValueError, KeyError, TypeError, AttributeError):
+                reasons.append("invalid_comparison_evidence")
+            prev_metrics = comparison["champion_metrics"]
+    for segment in [None, *p["segments"]]:
+        for metric, rule in p["metrics"].items():
+            name = f"{segment or 'overall'}.{metric}"
 
-    checks: dict[str, Any] = {}
-    _check_degradation(
-        name="overall.mdape",
-        new_val=_get_metric(new_metrics, ["overall", "mdape"]),
-        prev_val=_get_metric(prev_metrics, ["overall", "mdape"]),
-        max_degrade_pct=settings.gate_overall_mae_max_degrade_pct,
-        reasons=reasons,
-        checks=checks,
-    )
-    _check_degradation(
-        name="overall.ae_p90",
-        new_val=_get_metric(new_metrics, ["overall", "ae_p90"]),
-        prev_val=_get_metric(prev_metrics, ["overall", "ae_p90"]),
-        max_degrade_pct=settings.gate_overall_mae_max_degrade_pct,
-        reasons=reasons,
-        checks=checks,
-    )
-    _check_degradation(
-        name="overall.wape",
-        new_val=_get_metric(new_metrics, ["overall", "wape"]),
-        prev_val=_get_metric(prev_metrics, ["overall", "wape"]),
-        max_degrade_pct=settings.gate_overall_wape_max_degrade_pct,
-        reasons=reasons,
-        checks=checks,
-    )
-    _check_degradation(
-        name="enebolig.mdape",
-        new_val=_get_metric(new_metrics, ["by_realestate_type", "enebolig", "mdape"]),
-        prev_val=_get_metric(prev_metrics, ["by_realestate_type", "enebolig", "mdape"]),
-        max_degrade_pct=settings.gate_enebolig_mae_max_degrade_pct,
-        reasons=reasons,
-        checks=checks,
-    )
-    _check_degradation(
-        name="enebolig.ae_p90",
-        new_val=_get_metric(new_metrics, ["by_realestate_type", "enebolig", "ae_p90"]),
-        prev_val=_get_metric(prev_metrics, ["by_realestate_type", "enebolig", "ae_p90"]),
-        max_degrade_pct=settings.gate_enebolig_mae_max_degrade_pct,
-        reasons=reasons,
-        checks=checks,
-    )
-    _check_degradation(
-        name="enebolig.wape",
-        new_val=_get_metric(new_metrics, ["by_realestate_type", "enebolig", "wape"]),
-        prev_val=_get_metric(prev_metrics, ["by_realestate_type", "enebolig", "wape"]),
-        max_degrade_pct=settings.gate_enebolig_wape_max_degrade_pct,
-        reasons=reasons,
-        checks=checks,
-    )
+            def value(metrics, segment=segment, metric=metric):
+                if not isinstance(metrics, dict):
+                    return None
+                group = (
+                    metrics.get("overall")
+                    if segment is None
+                    else metrics.get("by_realestate_type", {}).get(segment)
+                    if isinstance(metrics.get("by_realestate_type"), dict)
+                    else None
+                )
+                return group.get(metric) if isinstance(group, dict) else None
 
-    passed = len(reasons) == 0
-    details["checks"]["comparison"] = {
-        "status": "passed" if passed else "failed",
-        "checks": checks,
-    }
-
-    return GateResult(passed=passed, reasons=reasons, details=details)
+            new = value(new_metrics)
+            old = value(prev_metrics)
+            if not _number(new):
+                reasons.append("invalid_candidate_metric")
+                continue
+            check = {"candidate": new, "absolute_max": rule["max"]}
+            details["checks"][name] = check
+            if new > rule["max"]:
+                reasons.append("absolute_limit_exceeded")
+            if (
+                not bootstrap
+                and "invalid_comparison_evidence" not in reasons
+                and "unverifiable_comparison" not in reasons
+            ):
+                if not _number(old):
+                    reasons.append("invalid_champion_metric")
+                else:
+                    check["champion"] = old
+                    check["max_degradation"] = rule["max_degradation"]
+                    if old == 0:
+                        check["zero_champion"] = True
+                        if new > 0:
+                            reasons.append("relative_limit_exceeded")
+                    elif new > old * (1 + rule["max_degradation"]):
+                        reasons.append("relative_limit_exceeded")
+    return GateResult(not reasons, list(dict.fromkeys(reasons)), details)

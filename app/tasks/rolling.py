@@ -195,7 +195,7 @@ def gate_rolling_12m(ctx: dict) -> dict:
     try:
         manifest = ctx.get("manifest") or {}
         counts = manifest.get("counts") or {}
-        rows_trainable = int(counts.get("rows_trainable", 0))
+        rows_trainable = counts.get("rows_trainable", 0)
         metrics = ctx.get("train", {}).get("metrics") or {}
         comparison = ctx.get("train", {}).get("comparison")
         gate = evaluate_publish_gate(
@@ -203,6 +203,7 @@ def gate_rolling_12m(ctx: dict) -> dict:
             new_metrics=metrics,
             prev_metrics=None,
             comparison=comparison,
+            lineage=ctx.get("train", {}).get("lineage"),
         )
         ctx["gating"] = {
             "passed": gate.passed,

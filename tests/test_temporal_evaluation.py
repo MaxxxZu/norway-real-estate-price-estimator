@@ -407,7 +407,7 @@ def test_champion_identity_rejected_before_deserialization(monkeypatch, target, 
         rows_trainable=8, new_metrics={}, prev_metrics=None, comparison=result
     )
     assert not gate.passed
-    assert gate.reasons == ["unverifiable_comparison"]
+    assert gate.reasons == ["policy_unconfigured_or_invalid"]
 
 
 def test_champion_same_version_bundle_deserializes_and_evaluates(monkeypatch):
@@ -434,6 +434,6 @@ def test_champion_same_version_bundle_deserializes_and_evaluates(monkeypatch):
     )
     assert len(champion.frames) == len(challenger.frames) == 1
     monkeypatch.setattr(settings, "train_min_rows", 0)
-    assert evaluate_publish_gate(
+    assert not evaluate_publish_gate(
         rows_trainable=8, new_metrics={}, prev_metrics=None, comparison=result
     ).passed

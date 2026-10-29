@@ -1,3 +1,4 @@
+import json
 from copy import deepcopy
 from unittest.mock import Mock
 
@@ -8,9 +9,13 @@ from app.training.pipeline import Pipeline
 from app.training.snapshots import snapshot_paths_for_prefix
 from tests.test_rolling_chain import FakeStorage
 from tests.test_temporal_evaluation import config, model_spy, synthetic_rows  # noqa: F401
+from tests.test_training_gating import POLICY
 
 
 def configure(monkeypatch):
+    policy = deepcopy(POLICY)
+    policy["metrics"]["ae_p90"]["max"] = 10_000_000
+    monkeypatch.setattr(settings, "promotion_policy", json.dumps(policy))
     for key, value in vars(config()).items():
         monkeypatch.setattr(settings, f"split_{key}", value)
 
@@ -164,6 +169,8 @@ def test_both_paths_save_same_paired_evaluation_and_lineage(
     }
     rolling.train_rolling_12m.run(ctx, split_config=config().as_dict())
     rolling.gate_rolling_12m.run(ctx)
+    sync_key = next(k for k in pipeline.storage.writes if k.endswith("training_manifest.json"))
+    assert ctx["gating"] == pipeline.storage.get_json("unused", sync_key)["gating"]
     rolling.publish_rolling_12m.run(ctx)
     if mismatch:
         assert ctx["published"]["skipped"]
