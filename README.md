@@ -150,12 +150,13 @@ Rolling jobs reuse monthly source revisions, build a rolling dataset and pass
 explicit boundaries to training. RabbitMQ and Redis are required for the chord.
 A queued task ID confirms submission, not successful training or promotion.
 
-Automatic promotion currently requires a verifiable champion comparison, including
-consistent version references, complete lineage and an admissible common holdout.
-Bootstrap without a verifiable champion is blocked. Absolute quality thresholds,
-complete missing/finite-metric rules, retry-safe publication and concurrent pointer
-updates are not complete. Training and artifact creation do not establish that
-model activation is safe for production use.
+Automatic promotion requires a complete explicit promotion policy and valid
+candidate evidence. With a champion, paired evaluation and lineage must agree;
+bootstrap is disabled unless explicitly requested and the active pointer is
+confirmed absent. No production thresholds are supplied. See the
+[policy contract](docs/TEMPORAL_EVALUATION.md#promotion-policy). Retry-safe
+publication and concurrent pointer updates are not established. Training and
+artifact creation do not establish safe production activation.
 
 Unversioned snapshots and learned models without the supported feature schema are
 not silently migrated. Plan data rebuilding, retraining and activation separately;

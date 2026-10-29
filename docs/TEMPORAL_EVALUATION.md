@@ -113,14 +113,46 @@ fingerprint. These checks assume trusted artifacts and truthful complete fresh-f
 metadata; a checksum does not prove publisher trust or detect undeclared pretraining.
 Warm-start models are unsupported by this lineage version.
 
-Absent, legacy, partial, invalid or unreadable champion evidence produces
-`status=unverifiable`; it does not mean a champion is absent. The minimal gate
-guard blocks automatic promotion without a complete verified comparison, including
-bootstrap without a champion. It uses freshly paired metrics for existing relative
-rules. Bootstrap policy, required/finite metric rules, approved absolute/relative
-quality thresholds and concurrency-safe publication are not supplied by this
-comparison protocol. Existing
-gate settings are retained, not validated as production policy by this work.
+An explicit `NoSuchKey` response for `latest.json` is the only storage result
+interpreted as an absent active pointer. Other storage errors, unsupported lineage,
+and invalid artifacts block promotion. This distinction depends on the provider's
+error contract; it has not been verified against external providers.
+
+## Promotion policy
+
+`REE_PROMOTION_POLICY` is a JSON object; it is absent by default and is validated
+when the gate runs, so inference can start without it. Missing or invalid policy
+blocks automatic promotion. Configure every field explicitly. This example uses
+arbitrary synthetic values only, not recommended thresholds:
+
+```json
+{"version":1,"bootstrap":false,"min_trainable":8,"min_evaluation":3,
+ "segments":{"enebolig":1},"metrics":{
+   "mdape":{"max":1.0,"max_degradation":0.1},
+   "ae_p90":{"max":10000000,"max_degradation":0.1},
+   "wape":{"max":1.0,"max_degradation":0.1}}}
+```
+
+All three metrics are required overall and for every listed segment. Limits are
+nonnegative finite numbers; `max_degradation` is a fraction between 0 and 1.
+Counts are positive integers and at least one required segment is mandatory.
+Metrics are finite nonnegative JSON numbers, not strings or booleans. The supplied
+trainable count must equal the sum of the train, validation and test lineage
+counts; `min_trainable` applies to that full dataset. Counts, lineage, candidate
+evaluation identity and paired comparison evidence must agree.
+A zero champion value passes relative comparison only when the candidate is also
+zero. Decisions contain stable reason codes and a canonical policy fingerprint;
+they do not include exception text. With `bootstrap: true`, a confirmed absent
+pointer may pass only the absolute and count checks. This flag is an explicit
+request and defaults to disabled through the absent policy.
+
+Legacy `REE_GATE_OVERALL_MAE_MAX_DEGRADE_PCT`,
+`REE_GATE_ENEBOLIG_MAE_MAX_DEGRADE_PCT`, and the corresponding WAPE settings
+are ignored; they are not mapped to the new rules. `REE_TRAIN_MIN_ROWS` is not
+a promotion policy. Configure the complete new policy in each training process.
+Existing queued training jobs must receive consistent configuration. No thresholds
+are approved by this repository. Publication concurrency and retries remain outside
+this contract.
 
 ## Compatibility and limits
 

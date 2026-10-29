@@ -190,10 +190,11 @@ class Pipeline:
         )
         self.result["comparison"] = comparison
         gate = evaluate_publish_gate(
-            rows_trainable=int(self.manifest["counts"]["rows_trainable"]),
+            rows_trainable=self.manifest["counts"]["rows_trainable"],
             new_metrics=train_result.metrics,
             prev_metrics=None,
             comparison=comparison,
+            lineage=train_result.lineage,
         )
 
         training_manifest = {

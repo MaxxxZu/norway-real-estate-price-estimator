@@ -8,6 +8,7 @@ import joblib
 
 from app.config import settings
 from app.features import validate_feature_schema
+from app.storage.s3 import S3ObjectNotFound, S3StorageError
 from app.training.modeling import evaluate_model
 from app.training.snapshots import semantic_fingerprint
 from app.training.splitting import TemporalSplitConfig, membership
@@ -119,7 +120,10 @@ def compare_models(
 def compare_with_champion(storage, challenger, schema, lineage, rows):
     """Read a single champion reference. Missing/unreadable is never a bootstrap decision."""
     try:
-        latest = storage.get_json(bucket=settings.s3_bucket_models, key="latest.json")
+        try:
+            latest = storage.get_json(bucket=settings.s3_bucket_models, key="latest.json")
+        except S3ObjectNotFound:
+            return {"status": "no_active_pointer"}
         if not isinstance(latest, dict):
             raise ValueError("Invalid champion pointer")
         version = latest.get("model_version")
@@ -142,7 +146,10 @@ def compare_with_champion(storage, challenger, schema, lineage, rows):
         champion_schema = storage.get_json(
             bucket=settings.s3_bucket_models, key=f"{prefix}/feature_schema.json"
         )
-        validate_lineage(champion_lineage)
+        try:
+            validate_lineage(champion_lineage)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return {"status": "unverifiable", "reason": "unknown_or_invalid_lineage"}
         validate_feature_schema(champion_schema)
         champion = joblib.load(
             BytesIO(storage.get_bytes(bucket=settings.s3_bucket_models, key=model_key))
@@ -152,6 +159,8 @@ def compare_with_champion(storage, challenger, schema, lineage, rows):
         )
         comparison["champion_reference"] = latest
         return comparison
+    except (S3StorageError, TimeoutError):
+        return {"status": "unverifiable", "reason": "champion_storage_error"}
     except Exception:
-        # No exception text: SDK/deserialization errors can contain sensitive details.
+        # Exception text can contain sensitive details.
         return {"status": "unverifiable", "reason": "champion_unavailable_or_invalid"}
